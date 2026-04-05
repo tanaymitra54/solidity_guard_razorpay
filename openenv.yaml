@@ -1,0 +1,66 @@
+name: SolidityGuard
+version: 0.1.0
+description: OpenEnv RL environment for Solidity security review
+entrypoint: environment.py:SolidityGuardEnv
+tasks:
+  - id: task_1_best_practices
+    difficulty: easy
+    description: Detect syntax and best-practice issues in Solidity contracts.
+    max_steps: 1
+  - id: task_2_gas_optimization
+    difficulty: medium
+    description: Detect gas optimization opportunities in Solidity contracts.
+    max_steps: 1
+  - id: task_3_security
+    difficulty: hard
+    description: Detect security vulnerabilities in Solidity contracts.
+    max_steps: 1
+schemas:
+  observation:
+    type: object
+    required: [source_code, metadata, task_id]
+    properties:
+      source_code:
+        type: string
+      metadata:
+        type: object
+        required: [contract_name, compiler_version, file_path]
+        properties:
+          contract_name:
+            type: string
+          compiler_version:
+            type: string
+          file_path:
+            type: string
+      task_id:
+        type: string
+  action:
+    type: array
+    items:
+      type: object
+      required: [issue_type, line_number, description, severity]
+      properties:
+        issue_type:
+          type: string
+        line_number:
+          type: integer
+          nullable: true
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [Critical, Medium, Low, Info]
+  state:
+    type: object
+    required: [task_id, step_count, max_steps, score_so_far, done]
+    properties:
+      task_id:
+        type: string
+      step_count:
+        type: integer
+      max_steps:
+        type: integer
+      score_so_far:
+        type: number
+      done:
+        type: boolean

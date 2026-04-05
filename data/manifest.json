@@ -1,0 +1,176 @@
+[
+  {
+    "id": "t1_sample_1",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/missing_spdx.sol",
+    "metadata": {
+      "contract_name": "NoSpdx",
+      "compiler_version": "0.7.6",
+      "file_path": "missing_spdx.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "missing_spdx",
+        "line_number": 1,
+        "description": "Missing SPDX license identifier",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "old_compiler_version",
+        "line_number": 2,
+        "description": "Compiler version below 0.8.x",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t1_sample_2",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/missing_natspec.sol",
+    "metadata": {
+      "contract_name": "NoNatSpec",
+      "compiler_version": "0.8.13",
+      "file_path": "missing_natspec.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "missing_natspec",
+        "line_number": 6,
+        "description": "Public function missing NatSpec comment",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t1_sample_3",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/deprecated_constructor.sol",
+    "metadata": {
+      "contract_name": "LegacyConstructor",
+      "compiler_version": "0.4.24",
+      "file_path": "deprecated_constructor.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "deprecated_constructor",
+        "line_number": 6,
+        "description": "Constructor uses deprecated syntax",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "old_compiler_version",
+        "line_number": 2,
+        "description": "Compiler version below 0.8.x",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t2_sample_1",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/inefficient_loop.sol",
+    "metadata": {
+      "contract_name": "LoopGas",
+      "compiler_version": "0.8.17",
+      "file_path": "inefficient_loop.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "unbounded_loop",
+        "line_number": 10,
+        "description": "Loop uses dynamic array length without bounds",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
+    "id": "t2_sample_2",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/redundant_storage.sol",
+    "metadata": {
+      "contract_name": "StorageGas",
+      "compiler_version": "0.8.19",
+      "file_path": "redundant_storage.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "redundant_storage_read",
+        "line_number": 12,
+        "description": "Repeated storage reads could be cached",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
+    "id": "t2_sample_3",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/require_string.sol",
+    "metadata": {
+      "contract_name": "RequireString",
+      "compiler_version": "0.8.18",
+      "file_path": "require_string.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "custom_error_missing",
+        "line_number": 6,
+        "description": "Custom errors are preferred over require strings",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_1",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/reentrancy.sol",
+    "metadata": {
+      "contract_name": "Reentry",
+      "compiler_version": "0.8.20",
+      "file_path": "reentrancy.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "reentrancy",
+        "line_number": 13,
+        "description": "State update after external call allows reentrancy",
+        "severity": "Critical"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_2",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/missing_access_control.sol",
+    "metadata": {
+      "contract_name": "Admin",
+      "compiler_version": "0.8.20",
+      "file_path": "missing_access_control.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "missing_access_control",
+        "line_number": 9,
+        "description": "Sensitive function lacks access control",
+        "severity": "Critical"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_3",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/tx_origin_auth.sol",
+    "metadata": {
+      "contract_name": "OriginAuth",
+      "compiler_version": "0.8.20",
+      "file_path": "tx_origin_auth.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "tx_origin_auth",
+        "line_number": 11,
+        "description": "Authorization uses tx.origin",
+        "severity": "Critical"
+      }
+    ]
+  }
+]
