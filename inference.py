@@ -6,6 +6,7 @@ import sys
 from typing import Any, Dict, List
 
 from environment import SolidityGuardEnv
+from multi_agent import MultiAgentSystem
 
 
 def _log(tag: str, payload: Dict[str, Any]) -> None:
@@ -51,6 +52,8 @@ def _build_prompt(source_code: str, task_id: str) -> str:
     return (
         "Review the Solidity contract and return a JSON array of findings. "
         "Each finding must include: issue_type, line_number, description, severity. "
+        "OPTIONALLY include: exploit_path (step-by-step attack explanation), "
+        "recommended_fix (suggested code changes), confidence (0.0-1.0). "
         f"Task: {task_id}.\n\n"
         f"Contract:\n{source_code}"
     )
@@ -58,19 +61,31 @@ def _build_prompt(source_code: str, task_id: str) -> str:
 
 def run() -> int:
     env = SolidityGuardEnv()
+    multi_agent = MultiAgentSystem()
     tasks = [
         "task_1_best_practices",
         "task_2_gas_optimization",
         "task_3_security",
     ]
 
-    _log("START", {"task_count": len(tasks)})
+    _log("START", {"task_count": len(tasks), "multi_agent_enabled": True})
     total_score = 0.0
 
     for task_id in tasks:
         observation = env.reset(task_id=task_id)
-        prompt = _build_prompt(observation["source_code"], task_id)
-        actions = _call_model(prompt)
+        
+        # Check if multi-agent mode is enabled via env var
+        use_multi_agent = os.getenv("MULTI_AGENT_MODE", "false").lower() == "true"
+        
+        if use_multi_agent:
+            # Use multi-agent system
+            actions = multi_agent.process(observation["source_code"], task_id)
+            _log("STEP", {"task_id": task_id, "agent_mode": "multi_agent", "findings": len(actions)})
+        else:
+            # Use standard LLM inference
+            prompt = _build_prompt(observation["source_code"], task_id)
+            actions = _call_model(prompt)
+            _log("STEP", {"task_id": task_id, "agent_mode": "single_llm", "findings": len(actions)})
 
         step_result = env.step(actions)
         state = env.state()
@@ -84,6 +99,7 @@ def run() -> int:
                 "reward": step_result["reward"],
                 "details": step_result.get("details", {}),
                 "state": state,
+                "agent_mode": "multi_agent" if use_multi_agent else "single_llm",
             },
         )
 
