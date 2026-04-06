@@ -50,6 +50,20 @@ schemas:
         severity:
           type: string
           enum: [Critical, Medium, Low, Info]
+        exploit_path:
+          type: string
+          nullable: true
+          description: "Step-by-step explanation of how this vulnerability can be exploited"
+        recommended_fix:
+          type: string
+          nullable: true
+          description: "Suggested code changes to fix this vulnerability"
+        confidence:
+          type: number
+          nullable: true
+          minimum: 0.0
+          maximum: 1.0
+          description: "Confidence level in the finding (0.0 to 1.0)"
   state:
     type: object
     required: [task_id, step_count, max_steps, score_so_far, done]

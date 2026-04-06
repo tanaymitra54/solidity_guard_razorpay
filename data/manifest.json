@@ -66,6 +66,96 @@
     ]
   },
   {
+    "id": "t1_sample_4",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/old_pragma.sol",
+    "metadata": {
+      "contract_name": "OldPragma",
+      "compiler_version": "0.4.25",
+      "file_path": "old_pragma.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "old_compiler_version",
+        "line_number": 2,
+        "description": "Compiler version below 0.8.x",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "deprecated_constructor",
+        "line_number": 13,
+        "description": "Constructor uses deprecated syntax",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "missing_natspec",
+        "line_number": 7,
+        "description": "Public function missing NatSpec comment",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t1_sample_5",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/missing_events.sol",
+    "metadata": {
+      "contract_name": "NoEvents",
+      "compiler_version": "0.8.19",
+      "file_path": "missing_events.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "missing_spdx",
+        "line_number": 1,
+        "description": "Missing SPDX license identifier",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "missing_events",
+        "line_number": 16,
+        "description": "State changing function should emit events",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "missing_events",
+        "line_number": 22,
+        "description": "State changing function should emit events",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t1_sample_6",
+    "task_id": "task_1_best_practices",
+    "source_path": "data/samples/task1/unused_variables.sol",
+    "metadata": {
+      "contract_name": "UnusedImports",
+      "compiler_version": "0.8.20",
+      "file_path": "unused_variables.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "unused_variables",
+        "line_number": 8,
+        "description": "Unused state variables waste gas",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "unused_variables",
+        "line_number": 9,
+        "description": "Unused state variables waste gas",
+        "severity": "Low"
+      },
+      {
+        "issue_type": "unused_variables",
+        "line_number": 10,
+        "description": "Unused state variables waste gas",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
     "id": "t2_sample_1",
     "task_id": "task_2_gas_optimization",
     "source_path": "data/samples/task2/inefficient_loop.sol",
@@ -120,6 +210,78 @@
     ]
   },
   {
+    "id": "t2_sample_4",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/poor_packing.sol",
+    "metadata": {
+      "contract_name": "PackingIssues",
+      "compiler_version": "0.8.19",
+      "file_path": "poor_packing.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "poor_struct_packing",
+        "line_number": 6,
+        "description": "Struct fields should be packed to minimize storage slots",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
+    "id": "t2_sample_5",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/unchecked_math.sol",
+    "metadata": {
+      "contract_name": "InlineAssemblyGas",
+      "compiler_version": "0.8.19",
+      "file_path": "unchecked_math.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "redundant_storage_read",
+        "line_number": 9,
+        "description": "Multiple storage reads should be cached",
+        "severity": "Medium"
+      },
+      {
+        "issue_type": "redundant_storage_read",
+        "line_number": 19,
+        "description": "Storage read in loop should be cached",
+        "severity": "Medium"
+      },
+      {
+        "issue_type": "unchecked_math_opportunity",
+        "line_number": 9,
+        "description": "Safe math operations could use unchecked block",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t2_sample_6",
+    "task_id": "task_2_gas_optimization",
+    "source_path": "data/samples/task2/expensive_operations.sol",
+    "metadata": {
+      "contract_name": "ExpensiveOperations",
+      "compiler_version": "0.8.19",
+      "file_path": "expensive_operations.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "expensive_operation_in_loop",
+        "line_number": 11,
+        "description": "Expensive exponentiation operation in loop",
+        "severity": "Medium"
+      },
+      {
+        "issue_type": "inefficient_string_concat",
+        "line_number": 20,
+        "description": "String concatenation in loop is gas inefficient",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
     "id": "t3_sample_1",
     "task_id": "task_3_security",
     "source_path": "data/samples/task3/reentrancy.sol",
@@ -133,7 +295,9 @@
         "issue_type": "reentrancy",
         "line_number": 13,
         "description": "State update after external call allows reentrancy",
-        "severity": "Critical"
+        "severity": "Critical",
+        "exploit_path": "Attacker deploys malicious contract with fallback function that calls withdraw() recursively before balance is updated, draining contract funds",
+        "recommended_fix": "Use checks-effects-interactions pattern: update balance before external call or implement ReentrancyGuard"
       }
     ]
   },
@@ -151,7 +315,9 @@
         "issue_type": "missing_access_control",
         "line_number": 9,
         "description": "Sensitive function lacks access control",
-        "severity": "Critical"
+        "severity": "Critical",
+        "exploit_path": "Any user can call setAdmin() function to grant themselves admin privileges and control the contract",
+        "recommended_fix": "Add onlyOwner modifier to restrict access to sensitive functions"
       }
     ]
   },
@@ -169,7 +335,81 @@
         "issue_type": "tx_origin_auth",
         "line_number": 11,
         "description": "Authorization uses tx.origin",
+        "severity": "Critical",
+        "exploit_path": "Attacker tricks legitimate user into calling malicious contract that forwards calls to this contract, bypassing tx.origin check",
+        "recommended_fix": "Replace tx.origin with msg.sender for proper authentication"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_4",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/integer_overflow.sol",
+    "metadata": {
+      "contract_name": "IntegerOverflow",
+      "compiler_version": "0.8.20",
+      "file_path": "integer_overflow.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "integer_overflow_risk",
+        "line_number": 11,
+        "description": "Potential integer underflow without checks",
+        "severity": "Medium"
+      },
+      {
+        "issue_type": "integer_overflow_risk",
+        "line_number": 17,
+        "description": "Potential integer overflow without checks",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_5",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/unsafe_delegatecall.sol",
+    "metadata": {
+      "contract_name": "UnsafeDelegateCall",
+      "compiler_version": "0.8.20",
+      "file_path": "unsafe_delegatecall.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "unsafe_delegatecall",
+        "line_number": 15,
+        "description": "Delegatecall without proper validation",
         "severity": "Critical"
+      },
+      {
+        "issue_type": "unsafe_delegatecall",
+        "line_number": 20,
+        "description": "Unrestricted delegatecall in fallback function",
+        "severity": "Critical"
+      }
+    ]
+  },
+  {
+    "id": "t3_sample_6",
+    "task_id": "task_3_security",
+    "source_path": "data/samples/task3/weak_randomness.sol",
+    "metadata": {
+      "contract_name": "RandomnessVulnerability",
+      "compiler_version": "0.8.20",
+      "file_path": "weak_randomness.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "weak_randomness",
+        "line_number": 9,
+        "description": "Randomness using predictable block properties",
+        "severity": "Critical"
+      },
+      {
+        "issue_type": "weak_randomness",
+        "line_number": 22,
+        "description": "Predictable block hash usage",
+        "severity": "Medium"
       }
     ]
   }
