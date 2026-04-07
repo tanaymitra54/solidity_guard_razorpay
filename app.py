@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from environment import SolidityGuardEnv
@@ -24,6 +25,144 @@ class ReportRequest(BaseModel):
     task_id: str
     include_fixes: bool = Field(default=True)
     include_exploits: bool = Field(default=True)
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> str:
+    """Landing page with project information and links."""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SolidityGuard - OpenEnv Smart Contract Auditor</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                max-width: 800px;
+                margin: 50px auto;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            .container {
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            }
+            h1 { font-size: 2.5em; margin-bottom: 10px; }
+            h2 { color: #ffd700; margin-top: 30px; }
+            .badge { 
+                display: inline-block;
+                background: #4CAF50;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 0.9em;
+                margin: 10px 0;
+            }
+            .link-button {
+                display: inline-block;
+                background: #4CAF50;
+                color: white;
+                padding: 12px 30px;
+                text-decoration: none;
+                border-radius: 8px;
+                margin: 10px 10px 10px 0;
+                font-weight: bold;
+                transition: background 0.3s;
+            }
+            .link-button:hover { background: #45a049; }
+            .endpoint {
+                background: rgba(0, 0, 0, 0.3);
+                padding: 10px;
+                border-radius: 8px;
+                margin: 5px 0;
+                font-family: monospace;
+            }
+            .feature {
+                background: rgba(255, 255, 255, 0.1);
+                padding: 15px;
+                border-radius: 10px;
+                margin: 10px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🛡️ SolidityGuard</h1>
+            <div class="badge">OpenEnv RL Environment</div>
+            <div class="badge">Meta x PyTorch Hackathon</div>
+            
+            <p style="font-size: 1.2em; margin: 20px 0;">
+                Advanced Smart Contract Security Review Environment for AI Agents
+            </p>
+            
+            <div style="margin: 30px 0;">
+                <a href="/docs" class="link-button">📚 API Documentation</a>
+                <a href="/health" class="link-button">💚 Health Check</a>
+            </div>
+            
+            <h2>🎯 What is SolidityGuard?</h2>
+            <p>
+                SolidityGuard is an OpenEnv reinforcement learning environment that trains AI agents 
+                to review Solidity smart contracts for security vulnerabilities, gas optimizations, 
+                and coding best practices.
+            </p>
+            
+            <h2>✨ Features</h2>
+            <div class="feature">
+                <strong>🔍 Multi-Agent Verification</strong><br>
+                Analyzer → Verifier → Risk Scorer pipeline for enhanced accuracy
+            </div>
+            <div class="feature">
+                <strong>💥 Exploit Proof System</strong><br>
+                Step-by-step attack explanations for security vulnerabilities
+            </div>
+            <div class="feature">
+                <strong>🔧 Auto-Fix Suggestions</strong><br>
+                Actionable code recommendations for detected issues
+            </div>
+            <div class="feature">
+                <strong>📊 Advanced Scoring</strong><br>
+                5-component grading: base, line accuracy, exploit, fix, confidence
+            </div>
+            
+            <h2>📋 Tasks</h2>
+            <div class="endpoint">
+                <strong>Task 1 (Easy):</strong> Best Practices & Syntax Issues<br>
+                <strong>Task 2 (Medium):</strong> Gas Optimization Opportunities<br>
+                <strong>Task 3 (Hard):</strong> Security Vulnerabilities
+            </div>
+            
+            <h2>🔌 API Endpoints</h2>
+            <div class="endpoint">GET  /health - Health check</div>
+            <div class="endpoint">POST /reset - Reset environment</div>
+            <div class="endpoint">POST /step - Submit findings</div>
+            <div class="endpoint">GET  /state - Get current state</div>
+            <div class="endpoint">POST /report - Generate audit report</div>
+            <div class="endpoint">GET  /dashboard - Get statistics</div>
+            
+            <h2>📊 Dataset</h2>
+            <p>
+                18 realistic Solidity samples across 3 difficulty levels, covering 15+ vulnerability types
+            </p>
+            
+            <h2>🔗 Links</h2>
+            <p>
+                <strong>GitHub:</strong> <a href="https://github.com/tanaymitra54/ContractSLM" 
+                style="color: #ffd700;">tanaymitra54/ContractSLM</a><br>
+                <strong>HF Space:</strong> <a href="https://huggingface.co/spaces/tanaymitra01/solidityguard-openenv" 
+                style="color: #ffd700;">tanaymitra01/solidityguard-openenv</a>
+            </p>
+            
+            <div style="margin-top: 40px; text-align: center; opacity: 0.8;">
+                <p>Meta x PyTorch Hackathon 2026 | Built with OpenEnv</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
 
 @app.get("/health")
