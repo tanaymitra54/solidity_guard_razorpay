@@ -470,9 +470,10 @@ def health() -> Dict[str, str]:
 
 
 @app.post("/reset")
-def reset(request: ResetRequest) -> Dict[str, Any]:
+def reset(request: Optional[ResetRequest] = None) -> Dict[str, Any]:
+    task_id = request.task_id if request else None
     try:
-        return env.reset(task_id=request.task_id)
+        return env.reset(task_id=task_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
