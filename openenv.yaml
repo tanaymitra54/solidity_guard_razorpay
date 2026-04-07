@@ -7,14 +7,17 @@ tasks:
     difficulty: easy
     description: Detect syntax and best-practice issues in Solidity contracts.
     max_steps: 1
+    grader: graders:grade_action
   - id: task_2_gas_optimization
     difficulty: medium
     description: Detect gas optimization opportunities in Solidity contracts.
     max_steps: 1
+    grader: graders:grade_action
   - id: task_3_security
     difficulty: hard
     description: Detect security vulnerabilities in Solidity contracts.
     max_steps: 1
+    grader: graders:grade_action
 schemas:
   observation:
     type: object
