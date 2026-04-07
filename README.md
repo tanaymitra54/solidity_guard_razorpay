@@ -13,20 +13,22 @@ short_description: Solidity smart contract security review environment
 
 SolidityGuard is an OpenEnv RL environment that trains agents to review Solidity smart contracts for best practices, gas optimizations, and security vulnerabilities.
 
+## Overview
+
+SolidityGuard provides a comprehensive auditing platform for Solidity smart contracts with three difficulty levels:
+- **Task 1 (Easy)**: Best Practices & Syntax Issues
+- **Task 2 (Medium)**: Gas Optimization Opportunities  
+- **Task 3 (Hard)**: Security Vulnerabilities
+
 ## Quick Start
 
 ### Requirements
 - Python 3.11+
-- `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN` set in the environment
+- `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN` environment variables (for LLM inference)
 
 ### Install
 ```bash
 pip install -r requirements.txt
-```
-
-### Run Inference
-```bash
-python inference.py
 ```
 
 ### Run API Server
@@ -34,17 +36,22 @@ python inference.py
 uvicorn app:app --host 0.0.0.0 --port 7860
 ```
 
+### Run Inference
+```bash
+python inference.py
+```
+
 ### Expected Output
 Structured logs with `[START]`, `[STEP]`, and `[END]` tags. The final score is reported in the `[END]` log.
 
-## Environment Overview
+## Environment Specification
 
-### Observation
+### Observation Space
 - `source_code`: Solidity code string
 - `metadata`: contract name, compiler version, file path
 - `task_id`: active task
 
-### Action
+### Action Space
 JSON array of findings:
 ```json
 [
@@ -58,19 +65,41 @@ JSON array of findings:
 ```
 
 ### Tasks
-- Task 1: Best practices and syntax
-- Task 2: Gas optimization
-- Task 3: Security vulnerabilities
+- Task 1: Best practices and syntax (missing SPDX, old compiler, missing NatSpec, deprecated constructor)
+- Task 2: Gas optimization (unbounded loops, redundant storage reads, custom errors)
+- Task 3: Security vulnerabilities (reentrancy, missing access control, tx.origin auth)
+
+## API Endpoints
+
+### POST /reset
+Reset environment and get a contract to audit.
+```json
+{"task_id": "task_1_best_practices"}
+```
+
+### POST /step
+Submit audit findings and receive score.
+```json
+{"action": [{"issue_type": "reentrancy", "line_number": 13, "description": "...", "severity": "Critical"}]}
+```
+
+### GET /state
+Get current environment state.
+
+### GET /health
+Health check endpoint.
 
 ## Files
-- `openenv.yaml`: Environment spec
-- `environment.py`: Core env logic (`reset/step/state`)
-- `graders.py`: Reward logic and grading
-- `data/manifest.json`: Dataset manifest
-- `inference.py`: Baseline runner and logging
-- `app.py`: FastAPI endpoints for reset/step/state
-- `Dockerfile`: Container build
+- `openenv.yaml` - Environment spec
+- `environment.py` - Core env logic (`reset/step/state`)
+- `graders.py` - Reward logic and grading
+- `data/manifest.json` - Dataset manifest
+- `data/samples/` - Solidity contract samples
+- `inference.py` - Baseline runner and logging
+- `app.py` - FastAPI endpoints for reset/step/state
+- `Dockerfile` - Container build
 
 ## Notes
 - Runtime should stay under 20 minutes on 2 vCPU / 8 GB.
 - Docker build must succeed for submission.
+- Use Hugging Face Inference Providers for LLM inference.
