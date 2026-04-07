@@ -19,15 +19,12 @@ def _load_env_var(name: str) -> str:
 def _call_model(prompt: str) -> List[Dict[str, Any]]:
     from openai import OpenAI
 
-    api_base_url = _load_env_var("API_BASE_URL")
-    model_name = _load_env_var("MODEL_NAME")
-    hf_token = _load_env_var("HF_TOKEN")
-
-    if not api_base_url or not model_name or not hf_token:
-        return []
+    api_base_url = _load_env_var("API_BASE_URL") or _load_env_var("OPENAI_BASE_URL")
+    model_name = _load_env_var("MODEL_NAME") or "gpt-4o-mini"
+    api_key = _load_env_var("API_KEY") or _load_env_var("HF_TOKEN")
 
     try:
-        client = OpenAI(base_url=api_base_url, api_key=hf_token)
+        client = OpenAI(base_url=api_base_url or None, api_key=api_key or "missing-key")
         response = client.chat.completions.create(
             model=model_name,
             messages=[
