@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "solidityguard"
+version = "0.1.0"
+description = "Solidity smart contract security review environment for Meta x PyTorch Hackathon"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "tanaymitra01" }
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "openai>=1.30.0",
+    "pydantic>=2.0.0",
+    "uvicorn>=0.27.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
