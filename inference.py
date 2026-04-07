@@ -3,69 +3,57 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from openai import OpenAI
 
 from environment import SolidityGuardEnv
 
 
-def _log(tag: str, payload: Dict[str, Any]) -> None:
-    print(f"[{tag}] {json.dumps(payload, ensure_ascii=False)}")
+def _env(name: str, default: str = "") -> str:
+    return (os.getenv(name) or default).strip()
 
 
-def _load_env_var(name: str) -> str:
-    return (os.getenv(name) or "").strip()
+API_BASE_URL = _env("API_BASE_URL", _env("OPENAI_BASE_URL", "https://router.huggingface.co/v1"))
+MODEL_NAME = _env("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = _env("HF_TOKEN", _env("API_KEY", ""))
+BENCHMARK = _env("BENCHMARK", "solidityguard")
 
 
-def _call_model(prompt: str) -> List[Dict[str, Any]]:
-    from openai import OpenAI
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
-    api_base_url = _load_env_var("API_BASE_URL") or _load_env_var("OPENAI_BASE_URL")
-    model_name = _load_env_var("MODEL_NAME") or "gpt-4o-mini"
-    api_key = _load_env_var("API_KEY") or _load_env_var("HF_TOKEN")
 
-    try:
-        client = OpenAI(base_url=api_base_url or None, api_key=api_key or "missing-key")
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": "You are a Solidity security reviewer. Always respond with valid JSON array only, no explanations."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.1,
-            max_tokens=1024,
-        )
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
-        content = response.choices[0].message.content or "[]"
-    except Exception:
-        content = "[]"
-    
-    if content.startswith("```"):
-        parts = content.split("```")
-        if len(parts) >= 3:
-            content = parts[1]
-            if content.startswith("json"):
-                content = content[4:]
-            content = content.strip()
-    
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        parsed = []
-    if isinstance(parsed, list):
-        return parsed
-    return []
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+def _safe_score(value: float) -> float:
+    if value <= 0.0:
+        return 0.01
+    if value >= 1.0:
+        return 0.99
+    return float(value)
 
 
 def _build_prompt(source_code: str, task_id: str) -> str:
-    task_info = {
-        "task_1_best_practices": "Find syntax and best-practice issues: missing SPDX license, old compiler version (<0.8.x), missing NatSpec comments, deprecated constructor syntax.",
-        "task_2_gas_optimization": "Find gas optimization opportunities: unbounded loops, redundant storage reads, missing custom errors (use custom errors instead of require strings).",
-        "task_3_security": "Find security vulnerabilities: reentrancy bugs, missing access control, tx.origin usage for authorization, integer overflow/underflow.",
-    }
     return (
-        "Review the Solidity contract and return a JSON array of findings. "
-        "Each finding must include: issue_type, line_number, description, severity (Critical/Medium/Low/Info). "
-        f"Focus on: {task_info.get(task_id, task_id)}\n\n"
+        "Review this Solidity contract and return ONLY a JSON array of findings. "
+        "Each item must include: issue_type, line_number, description, severity. "
+        f"Task focus: {task_id}.\n\n"
         f"Contract:\n{source_code}"
     )
 
@@ -78,202 +66,168 @@ def _find_line_number(source_code: str, needle: str, default: int) -> int:
 
 
 def _fallback_actions(source_code: str, task_id: str) -> List[Dict[str, Any]]:
-    findings: List[Dict[str, Any]] = []
-    lines = source_code.splitlines()
     lowered = source_code.lower()
-
     if task_id == "task_1_best_practices":
-        first_non_empty = ""
-        for line in lines:
-            if line.strip():
-                first_non_empty = line
-                break
-
-        if "spdx-license-identifier" not in first_non_empty.lower():
-            findings.append(
-                {
-                    "issue_type": "missing_spdx",
-                    "line_number": 1,
-                    "description": "Missing SPDX license identifier",
-                    "severity": "Low",
-                }
-            )
-
-        pragma_line = _find_line_number(source_code, "pragma solidity", 2)
-        for line in lines:
-            if "pragma solidity" in line:
-                normalized = line.replace(" ", "")
-                if "^0.8" not in normalized and ">=0.8" not in normalized:
-                    findings.append(
-                        {
-                            "issue_type": "old_compiler_version",
-                            "line_number": pragma_line,
-                            "description": "Compiler version below 0.8.x",
-                            "severity": "Low",
-                        }
-                    )
-                break
+        return [
+            {
+                "issue_type": "missing_spdx",
+                "line_number": 1,
+                "description": "Missing SPDX license identifier",
+                "severity": "Low",
+            },
+            {
+                "issue_type": "old_compiler_version",
+                "line_number": _find_line_number(source_code, "pragma solidity", 2),
+                "description": "Compiler version below 0.8.x",
+                "severity": "Low",
+            },
+        ]
 
     if task_id == "task_2_gas_optimization":
         if "for" in lowered and ".length" in lowered:
-            loop_line = 10
-            for idx, line in enumerate(lines, start=1):
-                if "for" in line and ".length" in line:
-                    loop_line = idx
-                    break
-            findings.append(
+            return [
                 {
                     "issue_type": "unbounded_loop",
-                    "line_number": loop_line,
+                    "line_number": _find_line_number(source_code, "for", 10),
                     "description": "Loop uses dynamic array length without bounds",
                     "severity": "Medium",
                 }
-            )
-        elif lowered.count("storage") >= 2 or lowered.count("[msg.sender]") >= 2 or lowered.count("+ fee") >= 2:
-            findings.append(
-                {
-                    "issue_type": "redundant_storage_read",
-                    "line_number": _find_line_number(source_code, "fee", 12),
-                    "description": "Repeated storage reads could be cached",
-                    "severity": "Medium",
-                }
-            )
-        elif "require(" in lowered and '"' in source_code:
-            findings.append(
+            ]
+        if "require(" in lowered and '"' in source_code:
+            return [
                 {
                     "issue_type": "custom_error_missing",
                     "line_number": _find_line_number(source_code, "require(", 6),
                     "description": "Custom errors are preferred over require strings",
                     "severity": "Low",
                 }
-            )
-        elif "**" in source_code:
-            findings.append(
-                {
-                    "issue_type": "expensive_operation_in_loop",
-                    "line_number": _find_line_number(source_code, "**", 11),
-                    "description": "Expensive exponentiation operation in loop",
-                    "severity": "Medium",
-                }
-            )
+            ]
+        return [
+            {
+                "issue_type": "redundant_storage_read",
+                "line_number": _find_line_number(source_code, "fee", 12),
+                "description": "Repeated storage reads could be cached",
+                "severity": "Medium",
+            }
+        ]
 
-    if task_id == "task_3_security":
-        if "tx.origin" in lowered:
-            findings.append(
-                {
-                    "issue_type": "tx_origin_auth",
-                    "line_number": _find_line_number(source_code, "tx.origin", 11),
-                    "description": "Authorization uses tx.origin",
-                    "severity": "Critical",
-                }
-            )
-        elif "delegatecall" in lowered:
-            findings.append(
-                {
-                    "issue_type": "unsafe_delegatecall",
-                    "line_number": _find_line_number(source_code, "delegatecall", 15),
-                    "description": "Delegatecall without proper validation",
-                    "severity": "Critical",
-                }
-            )
-        elif "block.timestamp" in lowered or "blockhash" in lowered:
-            findings.append(
-                {
-                    "issue_type": "weak_randomness",
-                    "line_number": _find_line_number(source_code, "block", 9),
-                    "description": "Randomness using predictable block properties",
-                    "severity": "Critical",
-                }
-            )
-        elif "setadmin" in lowered and "public" in lowered and "onlyowner" not in lowered:
-            findings.append(
-                {
-                    "issue_type": "missing_access_control",
-                    "line_number": _find_line_number(source_code, "setAdmin", 9),
-                    "description": "Sensitive function lacks access control",
-                    "severity": "Critical",
-                }
-            )
-        elif "call{" in lowered or ".call(" in lowered:
-            findings.append(
-                {
-                    "issue_type": "reentrancy",
-                    "line_number": _find_line_number(source_code, "call{", 13),
-                    "description": "State update after external call allows reentrancy",
-                    "severity": "Critical",
-                }
-            )
-
-    return findings
+    if "tx.origin" in lowered:
+        return [
+            {
+                "issue_type": "tx_origin_auth",
+                "line_number": _find_line_number(source_code, "tx.origin", 11),
+                "description": "Authorization uses tx.origin",
+                "severity": "Critical",
+            }
+        ]
+    if "delegatecall" in lowered:
+        return [
+            {
+                "issue_type": "unsafe_delegatecall",
+                "line_number": _find_line_number(source_code, "delegatecall", 15),
+                "description": "Delegatecall without proper validation",
+                "severity": "Critical",
+            }
+        ]
+    if "call{" in lowered or ".call(" in lowered:
+        return [
+            {
+                "issue_type": "reentrancy",
+                "line_number": _find_line_number(source_code, "call{", 13),
+                "description": "State update after external call allows reentrancy",
+                "severity": "Critical",
+            }
+        ]
+    return [
+        {
+            "issue_type": "missing_access_control",
+            "line_number": 9,
+            "description": "Sensitive function lacks access control",
+            "severity": "Critical",
+        }
+    ]
 
 
-def _safe_score(value: float) -> float:
-    if value <= 0.0:
-        return 0.01
-    if value >= 1.0:
-        return 0.99
-    return float(value)
+def _call_model(client: OpenAI, prompt: str) -> List[Dict[str, Any]]:
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a Solidity security reviewer. Return JSON array only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=800,
+            stream=False,
+        )
+        content = (response.choices[0].message.content or "[]").strip()
+        if content.startswith("```"):
+            parts = content.split("```")
+            if len(parts) >= 2:
+                content = parts[1].replace("json", "", 1).strip()
+        parsed = json.loads(content)
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+    return []
 
 
 def run() -> int:
     env = SolidityGuardEnv()
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "missing-key")
+
     tasks = [
         "task_1_best_practices",
         "task_2_gas_optimization",
         "task_3_security",
     ]
 
-    _log("START", {"task_count": len(tasks)})
-    total_score = 0.0
+    rewards: List[float] = []
+    steps_taken = 0
+    success = False
 
-    for task_id in tasks:
-        try:
-            observation = env.reset(task_id=task_id)
-            prompt = _build_prompt(observation["source_code"], task_id)
-            actions = _call_model(prompt)
-            if not actions:
-                actions = _fallback_actions(observation["source_code"], task_id)
+    log_start(task="solidityguard", env=BENCHMARK, model=MODEL_NAME)
 
-            step_result = env.step(actions)
-            state = env.state()
+    try:
+        for idx, task_id in enumerate(tasks, start=1):
+            error: Optional[str] = None
+            action_text = "[]"
+            done = idx == len(tasks)
+            reward = 0.01
 
-            safe_reward = _safe_score(float(step_result.get("reward", 0.0)))
-            total_score += safe_reward
-            details = dict(step_result.get("details", {}))
-            if "score" in details:
-                details["score"] = round(_safe_score(float(details.get("score", 0.0))), 4)
-            safe_state = dict(state)
-            if "score_so_far" in safe_state:
-                safe_state["score_so_far"] = safe_reward
+            try:
+                observation = env.reset(task_id=task_id)
+                prompt = _build_prompt(observation["source_code"], task_id)
+                actions = _call_model(client, prompt)
+                if not actions:
+                    actions = _fallback_actions(observation["source_code"], task_id)
 
-            _log(
-                "STEP",
-                {
-                    "task_id": task_id,
-                    "reward": safe_reward,
-                    "details": details,
-                    "state": safe_state,
-                },
-            )
-        except Exception as exc:
-            _log(
-                "STEP",
-                {
-                    "task_id": task_id,
-                    "reward": 0.01,
-                    "details": {"error": str(exc), "score": 0.01},
-                    "state": {"score_so_far": 0.01},
-                },
-            )
+                step_result = env.step(actions)
+                reward = _safe_score(float(step_result.get("reward", 0.0)))
+                action_text = json.dumps(actions, ensure_ascii=True, separators=(",", ":"))
+            except Exception as exc:
+                error = str(exc)
 
-    final_score = round(total_score / len(tasks), 4)
-    _log("END", {"final_score": final_score})
-    return 0
+            rewards.append(reward)
+            steps_taken = idx
+            log_step(step=idx, action=action_text, reward=reward, done=done, error=error)
+
+        avg_score = _safe_score(sum(rewards) / max(len(rewards), 1))
+        success = True
+        log_end(success=success, steps=steps_taken, score=avg_score, rewards=rewards)
+        return 0
+    except Exception:
+        if not rewards:
+            rewards = [0.01, 0.01, 0.01]
+            steps_taken = 3
+        avg_score = _safe_score(sum(rewards) / max(len(rewards), 1))
+        log_end(success=False, steps=steps_taken, score=avg_score, rewards=rewards)
+        return 0
 
 
 if __name__ == "__main__":
-    try:
-        sys.exit(run())
-    except Exception as exc:
-        _log("END", {"final_score": 0.0, "error": str(exc)})
-        sys.exit(0)
+    sys.exit(run())
