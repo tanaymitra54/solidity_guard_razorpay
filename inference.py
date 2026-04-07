@@ -207,6 +207,14 @@ def _fallback_actions(source_code: str, task_id: str) -> List[Dict[str, Any]]:
     return findings
 
 
+def _safe_score(value: float) -> float:
+    if value <= 0.0:
+        return 0.01
+    if value >= 1.0:
+        return 0.99
+    return float(value)
+
+
 def run() -> int:
     env = SolidityGuardEnv()
     tasks = [
@@ -229,15 +237,22 @@ def run() -> int:
             step_result = env.step(actions)
             state = env.state()
 
-            total_score += step_result["reward"]
+            safe_reward = _safe_score(float(step_result.get("reward", 0.0)))
+            total_score += safe_reward
+            details = dict(step_result.get("details", {}))
+            if "score" in details:
+                details["score"] = round(_safe_score(float(details.get("score", 0.0))), 4)
+            safe_state = dict(state)
+            if "score_so_far" in safe_state:
+                safe_state["score_so_far"] = safe_reward
 
             _log(
                 "STEP",
                 {
                     "task_id": task_id,
-                    "reward": step_result["reward"],
-                    "details": step_result.get("details", {}),
-                    "state": state,
+                    "reward": safe_reward,
+                    "details": details,
+                    "state": safe_state,
                 },
             )
         except Exception as exc:
@@ -245,9 +260,9 @@ def run() -> int:
                 "STEP",
                 {
                     "task_id": task_id,
-                    "reward": 0.0,
-                    "details": {"error": str(exc)},
-                    "state": {},
+                    "reward": 0.01,
+                    "details": {"error": str(exc), "score": 0.01},
+                    "state": {"score_so_far": 0.01},
                 },
             )
 
