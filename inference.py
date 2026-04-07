@@ -9,7 +9,7 @@ from environment import SolidityGuardEnv
 
 
 def _log(tag: str, payload: Dict[str, Any]) -> None:
-    print(f"[{tag}] {json.dumps(payload, ensure_ascii=True)}")
+    print(f"[{tag}] {json.dumps(payload, ensure_ascii=False)}")
 
 
 def _load_env_var(name: str) -> str:
@@ -26,18 +26,30 @@ def _call_model(prompt: str) -> List[Dict[str, Any]]:
     model_name = _load_env_var("MODEL_NAME")
     hf_token = _load_env_var("HF_TOKEN")
 
-    client = OpenAI(base_url=api_base_url, api_key=hf_token)
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": "You are a Solidity security reviewer."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.0,
-        max_tokens=800,
-    )
+    try:
+        client = OpenAI(base_url=api_base_url, api_key=hf_token)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a Solidity security reviewer. Always respond with valid JSON array only, no explanations."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
 
-    content = response.choices[0].message.content or "[]"
+        content = response.choices[0].message.content or "[]"
+    except Exception:
+        content = "[]"
+    
+    if content.startswith("```"):
+        parts = content.split("```")
+        if len(parts) >= 3:
+            content = parts[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+    
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
@@ -48,10 +60,15 @@ def _call_model(prompt: str) -> List[Dict[str, Any]]:
 
 
 def _build_prompt(source_code: str, task_id: str) -> str:
+    task_info = {
+        "task_1_best_practices": "Find syntax and best-practice issues: missing SPDX license, old compiler version (<0.8.x), missing NatSpec comments, deprecated constructor syntax.",
+        "task_2_gas_optimization": "Find gas optimization opportunities: unbounded loops, redundant storage reads, missing custom errors (use custom errors instead of require strings).",
+        "task_3_security": "Find security vulnerabilities: reentrancy bugs, missing access control, tx.origin usage for authorization, integer overflow/underflow.",
+    }
     return (
         "Review the Solidity contract and return a JSON array of findings. "
-        "Each finding must include: issue_type, line_number, description, severity. "
-        f"Task: {task_id}.\n\n"
+        "Each finding must include: issue_type, line_number, description, severity (Critical/Medium/Low/Info). "
+        f"Focus on: {task_info.get(task_id, task_id)}\n\n"
         f"Contract:\n{source_code}"
     )
 

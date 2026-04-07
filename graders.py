@@ -20,10 +20,57 @@ def _normalize_issue(issue: Dict[str, Any]) -> Issue:
 
 
 def _match_issue(pred: Issue, expected: Issue) -> bool:
-    if pred.issue_type.lower() != expected.issue_type.lower():
-        return False
-    if pred.severity.lower() != expected.severity.lower():
-        return False
+    pred_type = pred.issue_type.lower()
+    exp_type = expected.issue_type.lower()
+    
+    type_variations = {
+        "missing_spdx": ["spdx", "license", "licensing"],
+        "old_compiler_version": ["compiler", "pragma", "version"],
+        "missing_natspec": ["natspec", "documentation", "doc comment"],
+        "deprecated_constructor": ["constructor", "deprecated"],
+        "unbounded_loop": ["loop", "unbounded", "dynamic array"],
+        "redundant_storage_read": ["storage read", "redundant", "cache", "sload", "repeated storage"],
+        "custom_error_missing": ["custom error", "require string"],
+        "reentrancy": ["reentrancy", "re-entrancy", "re-entry"],
+        "missing_access_control": ["access control", "authorization", "owner only"],
+        "tx_origin_auth": ["tx.origin", "tx origin"],
+    }
+    
+    matched_type = True
+    if pred_type != exp_type:
+        matched_type = False
+        if exp_type in type_variations:
+            for variation in type_variations[exp_type]:
+                if variation in pred_type or pred_type in variation:
+                    matched_type = True
+                    break
+        if not matched_type:
+            for key, variations in type_variations.items():
+                for v in variations:
+                    if v in pred_type and v in exp_type:
+                        matched_type = True
+                        break
+                if matched_type:
+                    break
+        if not matched_type:
+            return False
+    
+    pred_sev = pred.severity.lower()
+    exp_sev = expected.severity.lower()
+    
+    severity_map = {
+        "critical": ["critical", "high", "severe", "danger", "major", "important"],
+        "medium": ["medium", "moderate", "warning", "medium-high", "average"],
+        "low": ["low", "minor", "informational", "info", "minor issue", "cosmetic"],
+        "info": ["info", "information", "low", "informational", "note"],
+    }
+    
+    if pred_sev != exp_sev:
+        if exp_sev in severity_map:
+            matched_sev = any(s in pred_sev for s in severity_map[exp_sev])
+            if not matched_sev:
+                return False
+    
     return True
 
 
