@@ -1,3 +1,14 @@
+---
+title: ContractSLM
+emoji: 🛡️
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+license: mit
+short_description: Solidity smart contract security review environment
+---
+
 # SolidityGuard
 
 SolidityGuard is an OpenEnv RL environment that trains agents to review Solidity smart contracts for best practices, gas optimizations, and security vulnerabilities.
