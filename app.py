@@ -32,504 +32,437 @@ def root() -> str:
     """Landing page with project information and links."""
     return """
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <title>SOLIDITYGUARD - Smart Contract Annihilator</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SOLIDITYGUARD [CYBER-AUDIT PROXY]</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
         <style>
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
+            :root {
+                --primary: #ff5500;
+                --secondary: #ff8800;
+                --dark: #050505;
+                --panel-bg: rgba(10, 10, 10, 0.85);
+                --border: #ff5500;
+                --text: #e0e0e0;
+                --glitch-1: #00ffff;
+                --glitch-2: #ff003c;
             }
-            
+
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+
             body {
-                font-family: 'Rajdhani', sans-serif;
-                background: #0a0a0a;
-                color: #fff;
+                font-family: 'Fira Code', monospace;
+                background-color: var(--dark);
+                color: var(--text);
                 overflow-x: hidden;
-                position: relative;
             }
-            
-            /* Animated background */
-            body::before {
-                content: '';
+
+            /* Matrix Background */
+            canvas {
                 position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: 
-                    linear-gradient(90deg, transparent 79px, rgba(255, 107, 53, 0.03) 79px, rgba(255, 107, 53, 0.03) 81px, transparent 81px),
-                    linear-gradient(rgba(255, 107, 53, 0.03) 79px, transparent 79px, transparent 81px, rgba(255, 107, 53, 0.03) 81px),
-                    linear-gradient(#0a0a0a 0px, #0a0a0a);
-                background-size: 80px 80px, 80px 80px, 100% 100%;
-                z-index: -1;
-                animation: gridMove 20s linear infinite;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                z-index: -2;
+                opacity: 0.15;
             }
-            
-            @keyframes gridMove {
-                0% { background-position: 0 0, 0 0, 0 0; }
-                100% { background-position: 80px 80px, 80px 80px, 0 0; }
-            }
-            
-            /* Glowing orange orbs */
-            .orb {
+
+            /* CRT Overlay */
+            .scanlines {
                 position: fixed;
-                border-radius: 50%;
-                filter: blur(80px);
-                opacity: 0.3;
-                z-index: -1;
-                animation: float 20s ease-in-out infinite;
+                top: 0; left: 0; width: 100vw; height: 100vh;
+                background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+                background-size: 100% 2px, 3px 100%;
+                z-index: 9999;
+                pointer-events: none;
             }
-            
-            .orb1 {
-                width: 400px;
-                height: 400px;
-                background: #ff6b35;
-                top: 10%;
-                left: 20%;
-                animation-delay: 0s;
+
+            .vignette {
+                position: fixed;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.8) 100%);
+                z-index: 9998;
+                pointer-events: none;
             }
-            
-            .orb2 {
-                width: 300px;
-                height: 300px;
-                background: #f7931e;
-                bottom: 20%;
-                right: 15%;
-                animation-delay: 5s;
-            }
-            
-            @keyframes float {
-                0%, 100% { transform: translate(0, 0) scale(1); }
-                50% { transform: translate(50px, 50px) scale(1.1); }
-            }
-            
+
             .container {
-                max-width: 1200px;
+                max-width: 1100px;
                 margin: 0 auto;
                 padding: 40px 20px;
                 position: relative;
                 z-index: 1;
             }
-            
-            /* Header */
-            .header {
+
+            /* HUD Header */
+            header {
                 text-align: center;
-                padding: 60px 0;
-                border-bottom: 2px solid rgba(255, 107, 53, 0.3);
                 margin-bottom: 60px;
+                padding: 40px 0;
+                border-bottom: 2px solid var(--primary);
                 position: relative;
+                background: linear-gradient(180deg, transparent, rgba(255, 85, 0, 0.05));
             }
-            
-            .header::after {
+            header::after {
                 content: '';
                 position: absolute;
-                bottom: -2px;
-                left: 0;
-                width: 0;
-                height: 2px;
-                background: linear-gradient(90deg, transparent, #ff6b35, transparent);
-                animation: lineGrow 3s ease-in-out infinite;
+                bottom: -5px; left: 50%; transform: translateX(-50%);
+                width: 150px; height: 8px;
+                background: var(--primary);
+                box-shadow: 0 0 15px var(--primary);
             }
-            
-            @keyframes lineGrow {
-                0%, 100% { width: 0; left: 50%; }
-                50% { width: 100%; left: 0; }
-            }
-            
-            h1 {
+
+            h1.glitch {
                 font-family: 'Orbitron', sans-serif;
-                font-size: 5em;
+                font-size: 4.5rem;
                 font-weight: 900;
-                background: linear-gradient(135deg, #ff6b35 0%, #f7931e 50%, #ff6b35 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
+                color: #fff;
                 text-transform: uppercase;
-                letter-spacing: 8px;
-                margin-bottom: 20px;
-                text-shadow: 0 0 80px rgba(255, 107, 53, 0.5);
-                animation: glitch 5s infinite;
-            }
-            
-            @keyframes glitch {
-                0%, 90%, 100% { transform: translate(0); }
-                92% { transform: translate(-2px, 2px); }
-                94% { transform: translate(2px, -2px); }
-                96% { transform: translate(-1px, 1px); }
-            }
-            
-            .subtitle {
-                font-family: 'Space Mono', monospace;
-                font-size: 1.3em;
-                color: #ff6b35;
-                letter-spacing: 3px;
-                text-transform: uppercase;
-                margin-bottom: 30px;
-            }
-            
-            .badges {
-                display: flex;
-                gap: 15px;
-                justify-content: center;
-                flex-wrap: wrap;
-                margin-top: 30px;
-            }
-            
-            .badge {
-                font-family: 'Space Mono', monospace;
-                background: linear-gradient(135deg, rgba(255, 107, 53, 0.2), rgba(247, 147, 30, 0.2));
-                border: 2px solid #ff6b35;
-                padding: 10px 25px;
-                border-radius: 25px;
-                font-size: 0.9em;
-                text-transform: uppercase;
-                letter-spacing: 2px;
-                box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
-                transition: all 0.3s;
-            }
-            
-            .badge:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 5px 30px rgba(255, 107, 53, 0.5);
-            }
-            
-            /* Buttons */
-            .button-group {
-                display: flex;
-                gap: 20px;
-                justify-content: center;
-                margin: 50px 0;
-                flex-wrap: wrap;
-            }
-            
-            .link-button {
-                font-family: 'Orbitron', sans-serif;
-                background: linear-gradient(135deg, #ff6b35, #f7931e);
-                color: #000;
-                padding: 18px 40px;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 700;
-                font-size: 1.1em;
-                text-transform: uppercase;
-                letter-spacing: 2px;
-                position: relative;
-                overflow: hidden;
-                transition: all 0.3s;
-                box-shadow: 0 5px 30px rgba(255, 107, 53, 0.4);
-            }
-            
-            .link-button::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: -100%;
-                width: 100%;
-                height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-                transition: left 0.5s;
-            }
-            
-            .link-button:hover::before {
-                left: 100%;
-            }
-            
-            .link-button:hover {
-                transform: translateY(-3px) scale(1.05);
-                box-shadow: 0 8px 40px rgba(255, 107, 53, 0.6);
-            }
-            
-            /* Sections */
-            .section {
-                margin-bottom: 60px;
-                padding: 40px;
-                background: rgba(255, 107, 53, 0.05);
-                border: 1px solid rgba(255, 107, 53, 0.2);
-                border-radius: 15px;
-                backdrop-filter: blur(10px);
-                position: relative;
-                overflow: hidden;
-            }
-            
-            .section::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 2px;
-                background: linear-gradient(90deg, transparent, #ff6b35, transparent);
-            }
-            
-            h2 {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 2.5em;
-                font-weight: 700;
-                color: #ff6b35;
-                margin-bottom: 30px;
-                text-transform: uppercase;
-                letter-spacing: 4px;
                 position: relative;
                 display: inline-block;
+                text-shadow: 0 0 20px rgba(255, 85, 0, 0.8);
+                margin-bottom: 10px;
             }
-            
-            h2::after {
-                content: '';
+
+            h1.glitch::before, h1.glitch::after {
+                content: attr(data-text);
                 position: absolute;
-                bottom: -10px;
-                left: 0;
-                width: 100%;
-                height: 3px;
-                background: linear-gradient(90deg, #ff6b35, transparent);
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: var(--dark);
             }
-            
-            /* Feature Cards */
-            .features {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 25px;
-                margin-top: 30px;
+            h1.glitch::before {
+                left: 3px;
+                text-shadow: -2px 0 var(--glitch-2);
+                clip: rect(24px, 550px, 90px, 0);
+                animation: glitch-anim-2 3s infinite linear alternate-reverse;
             }
-            
-            .feature {
-                background: linear-gradient(135deg, rgba(255, 107, 53, 0.1), rgba(0, 0, 0, 0.3));
-                border: 2px solid rgba(255, 107, 53, 0.3);
-                border-radius: 15px;
-                padding: 30px;
-                transition: all 0.3s;
-                position: relative;
+            h1.glitch::after {
+                left: -3px;
+                text-shadow: -2px 0 var(--glitch-1);
+                clip: rect(85px, 550px, 140px, 0);
+                animation: glitch-anim 2.5s infinite linear alternate-reverse;
+            }
+
+            @keyframes glitch-anim {
+                0% { clip: rect(21px, 9999px, 80px, 0); }
+                20% { clip: rect(65px, 9999px, 99px, 0); }
+                40% { clip: rect(110px, 9999px, 11px, 0); }
+                60% { clip: rect(32px, 9999px, 55px, 0); }
+                80% { clip: rect(88px, 9999px, 14px, 0); }
+                100% { clip: rect(44px, 9999px, 90px, 0); }
+            }
+            @keyframes glitch-anim-2 {
+                0% { clip: rect(65px, 9999px, 100px, 0); }
+                20% { clip: rect(10px, 9999px, 44px, 0); }
+                40% { clip: rect(88px, 9999px, 11px, 0); }
+                60% { clip: rect(32px, 9999px, 80px, 0); }
+                80% { clip: rect(55px, 9999px, 60px, 0); }
+                100% { clip: rect(11px, 9999px, 22px, 0); }
+            }
+
+            .typewriter-text {
+                font-size: 1.2rem;
+                color: var(--secondary);
+                border-right: 2px solid var(--secondary);
+                display: inline-block;
+                white-space: nowrap;
                 overflow: hidden;
+                animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
             }
+
+            @keyframes typing { from { width: 0 } to { width: 100% } }
+            @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: var(--secondary); } }
+
+            /* Panels */
+            .hud-panel {
+                background: var(--panel-bg);
+                border: 1px solid rgba(255, 85, 0, 0.3);
+                border-left: 4px solid var(--primary);
+                padding: 30px;
+                margin-bottom: 40px;
+                position: relative;
+                box-shadow: inset 0 0 20px rgba(255, 85, 0, 0.05), 0 5px 15px rgba(0,0,0,0.5);
+                transition: all 0.3s ease;
+            }
+
+            .hud-panel:hover {
+                border-color: var(--primary);
+                box-shadow: inset 0 0 30px rgba(255, 85, 0, 0.1), 0 5px 25px rgba(255, 85, 0, 0.2);
+                transform: translateY(-2px);
+            }
+
+            .hud-panel::before {
+                content: '[SYS_DATA_BLK]';
+                position: absolute;
+                top: -12px; right: 20px;
+                background: var(--dark);
+                color: var(--secondary);
+                padding: 0 10px;
+                font-size: 0.8rem;
+                border: 1px solid var(--primary);
+            }
+
+            h2 {
+                font-family: 'Orbitron', sans-serif;
+                color: #fff;
+                font-size: 1.8rem;
+                margin-bottom: 20px;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                display: flex;
+                align-items: center;
+            }
+            h2::before {
+                content: '>';
+                color: var(--primary);
+                margin-right: 15px;
+                animation: blink-caret 1s infinite;
+            }
+
+            p { line-height: 1.7; margin-bottom: 15px; font-size: 1.1rem; color: #a0a0a0; }
             
-            .feature::before {
+            .highlight { color: var(--primary); font-weight: bold; text-shadow: 0 0 5px var(--primary); }
+
+            /* Feature Grid */
+            .grid-2 {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+
+            .cyber-card {
+                background: rgba(0, 0, 0, 0.6);
+                border: 1px solid #333;
+                padding: 20px;
+                position: relative;
+                transition: all 0.3s;
+            }
+
+            .cyber-card:hover {
+                border-color: var(--secondary);
+                background: rgba(255, 85, 0, 0.1);
+            }
+
+            .cyber-card h3 {
+                color: var(--primary);
+                font-family: 'Orbitron', sans-serif;
+                margin-bottom: 10px;
+                font-size: 1.2rem;
+            }
+
+            .endpoint-list {
+                list-style: none;
+            }
+            .endpoint-list li {
+                margin: 10px 0;
+                padding: 15px;
+                background: rgba(255, 255, 255, 0.03);
+                border-left: 2px solid #555;
+                display: flex;
+                align-items: center;
+                transition: all 0.2s;
+            }
+            .endpoint-list li:hover {
+                border-left-color: var(--primary);
+                background: rgba(255, 85, 0, 0.05);
+                transform: translateX(5px);
+            }
+            .method {
+                font-family: 'Orbitron', sans-serif;
+                font-weight: bold;
+                padding: 4px 8px;
+                background: rgba(255, 85, 0, 0.2);
+                color: var(--primary);
+                border-radius: 4px;
+                margin-right: 15px;
+                min-width: 60px;
+                text-align: center;
+            }
+
+            /* Buttons */
+            .btn-container {
+                display: flex;
+                justify-content: center;
+                gap: 30px;
+                margin: 40px 0;
+            }
+
+            .cyber-btn {
+                background: transparent;
+                color: var(--primary);
+                font-family: 'Orbitron', sans-serif;
+                font-size: 1.2rem;
+                font-weight: bold;
+                text-decoration: none;
+                padding: 15px 40px;
+                border: 2px solid var(--primary);
+                position: relative;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                overflow: hidden;
+                transition: all 0.3s;
+                box-shadow: 0 0 10px rgba(255, 85, 0, 0.2), inset 0 0 10px rgba(255, 85, 0, 0.1);
+            }
+
+            .cyber-btn::before {
                 content: '';
                 position: absolute;
-                top: -50%;
-                left: -50%;
-                width: 200%;
-                height: 200%;
-                background: radial-gradient(circle, rgba(255, 107, 53, 0.1), transparent);
-                transform: rotate(0deg);
-                transition: transform 0.6s;
-            }
-            
-            .feature:hover {
-                transform: translateY(-5px);
-                border-color: #ff6b35;
-                box-shadow: 0 10px 40px rgba(255, 107, 53, 0.3);
-            }
-            
-            .feature:hover::before {
-                transform: rotate(180deg);
-            }
-            
-            .feature-title {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 1.5em;
-                color: #f7931e;
-                margin-bottom: 15px;
-                font-weight: 700;
-                position: relative;
-                z-index: 1;
-            }
-            
-            .feature-desc {
-                font-size: 1.1em;
-                line-height: 1.6;
-                color: #ccc;
-                position: relative;
-                z-index: 1;
-            }
-            
-            /* Endpoints */
-            .endpoint {
-                background: #000;
-                border-left: 4px solid #ff6b35;
-                padding: 20px;
-                margin: 15px 0;
-                font-family: 'Space Mono', monospace;
-                font-size: 1.1em;
-                border-radius: 8px;
-                box-shadow: 0 5px 20px rgba(255, 107, 53, 0.2);
+                top: 0; left: -100%;
+                width: 100%; height: 100%;
+                background: var(--primary);
                 transition: all 0.3s;
+                z-index: -1;
             }
-            
-            .endpoint:hover {
-                background: rgba(255, 107, 53, 0.1);
-                transform: translateX(10px);
-                box-shadow: 0 5px 30px rgba(255, 107, 53, 0.4);
+
+            .cyber-btn:hover {
+                color: var(--dark);
+                box-shadow: 0 0 20px var(--primary);
             }
-            
-            .endpoint strong {
-                color: #ff6b35;
-                font-size: 1.2em;
+
+            .cyber-btn:hover::before {
+                left: 0;
             }
-            
-            /* Tasks */
-            .task {
-                background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 107, 53, 0.1));
-                border: 2px solid rgba(255, 107, 53, 0.4);
-                padding: 25px;
-                margin: 20px 0;
-                border-radius: 12px;
-                font-size: 1.2em;
-                transition: all 0.3s;
-            }
-            
-            .task:hover {
-                border-color: #ff6b35;
-                transform: scale(1.02);
-                box-shadow: 0 10px 40px rgba(255, 107, 53, 0.3);
-            }
-            
+
             /* Footer */
-            .footer {
+            footer {
                 text-align: center;
                 padding: 40px 0;
+                border-top: 1px solid rgba(255, 85, 0, 0.2);
                 margin-top: 60px;
-                border-top: 2px solid rgba(255, 107, 53, 0.3);
-                font-family: 'Space Mono', monospace;
             }
-            
-            .footer a {
-                color: #ff6b35;
-                text-decoration: none;
-                transition: all 0.3s;
-                font-weight: 700;
-            }
-            
-            .footer a:hover {
-                color: #f7931e;
-                text-shadow: 0 0 10px rgba(255, 107, 53, 0.8);
-            }
-            
-            /* Responsive */
+            footer a { color: var(--secondary); text-decoration: none; }
+            footer a:hover { text-decoration: underline; text-shadow: 0 0 5px var(--secondary); }
+
             @media (max-width: 768px) {
-                h1 {
-                    font-size: 3em;
-                    letter-spacing: 4px;
-                }
-                
-                .features {
-                    grid-template-columns: 1fr;
-                }
+                h1.glitch { font-size: 2.5rem; }
+                .grid-2 { grid-template-columns: 1fr; }
+                .btn-container { flex-direction: column; padding: 0 20px; }
             }
         </style>
     </head>
     <body>
-        <div class="orb orb1"></div>
-        <div class="orb orb2"></div>
-        
+        <canvas id="matrix"></canvas>
+        <div class="scanlines"></div>
+        <div class="vignette"></div>
+
         <div class="container">
-            <div class="header">
-                <h1>⚡ SOLIDITYGUARD ⚡</h1>
-                <div class="subtitle">🔥 Smart Contract Annihilator 🔥</div>
-                <div class="badges">
-                    <div class="badge">OpenEnv RL Environment</div>
-                    <div class="badge">Meta x PyTorch Hackathon</div>
-                    <div class="badge">AI-Powered Auditor</div>
+            <header>
+                <h1 class="glitch" data-text="SOLIDITYGUARD">SOLIDITYGUARD</h1>
+                <br>
+                <div class="typewriter-text">> SMART CONTRACT ANNIHILATOR PROTOCOL INITIATED...</div>
+            </header>
+
+            <div class="btn-container">
+                <a href="/docs" class="cyber-btn">API_DOCS</a>
+                <a href="/health" class="cyber-btn">SYS_HEALTH</a>
+            </div>
+
+            <div class="hud-panel">
+                <h2>MISSION BRIEFING</h2>
+                <p>SolidityGuard is an elite <span class="highlight">OpenEnv reinforcement learning environment</span> built for the Meta x PyTorch Hackathon. It trains AI agents to hunt down security vulnerabilities, optimize gas consumption, and enforce coding best practices in Solidity smart contracts.</p>
+                <p>Think of it as a <span class="highlight">cyber-assassin</span> for your blockchain code. If it compiles, we will break it.</p>
+            </div>
+
+            <div class="grid-2">
+                <div class="hud-panel">
+                    <h2>TACTICAL FEATURES</h2>
+                    <div class="cyber-card">
+                        <h3>[01] Multi-Agent Verification</h3>
+                        <p>Triple-layer defense matrix: Analyzer → Verifier → Risk Scorer pipeline for zero false positives.</p>
+                    </div>
+                    <div class="cyber-card" style="margin-top: 15px;">
+                        <h3>[02] Exploit Proof System</h3>
+                        <p>Reverse-engineers the attack vector. Provides step-by-step attack sequences for detected vulnerabilities.</p>
+                    </div>
+                    <div class="cyber-card" style="margin-top: 15px;">
+                        <h3>[03] Auto-Fix Engine</h3>
+                        <p>Calculates exact code modifications needed to neutralize the threat. Actionable remediation in milliseconds.</p>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="button-group">
-                <a href="/docs" class="link-button">📚 API DOCS</a>
-                <a href="/health" class="link-button">💚 HEALTH CHECK</a>
-            </div>
-            
-            <div class="section">
-                <h2>🎯 WHAT IS THIS BEAST?</h2>
-                <p style="font-size: 1.3em; line-height: 1.8; color: #ddd;">
-                    SolidityGuard is an <strong style="color: #ff6b35;">elite OpenEnv reinforcement learning environment</strong> 
-                    that trains AI agents to <strong style="color: #f7931e;">hunt down security vulnerabilities</strong>, 
-                    optimize gas consumption, and enforce best practices in Solidity smart contracts. 
-                    Think of it as a <strong style="color: #ff6b35;">security assassin</strong> for your blockchain code.
-                </p>
-            </div>
-            
-            <div class="section">
-                <h2>⚡ KILLER FEATURES</h2>
-                <div class="features">
-                    <div class="feature">
-                        <div class="feature-title">🤖 Multi-Agent Verification</div>
-                        <div class="feature-desc">
-                            Triple-layer defense: Analyzer → Verifier → Risk Scorer pipeline for maximum accuracy
-                        </div>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-title">💥 Exploit Proof System</div>
-                        <div class="feature-desc">
-                            Step-by-step attack vectors explained in detail - learn how hackers think
-                        </div>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-title">🔧 Auto-Fix Engine</div>
-                        <div class="feature-desc">
-                            Instant code fixes for detected issues - from detection to solution in seconds
-                        </div>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-title">📊 Advanced Scoring</div>
-                        <div class="feature-desc">
-                            5-component grading system: base, line accuracy, exploit depth, fix quality, confidence
-                        </div>
+
+                <div class="hud-panel">
+                    <h2>THREAT LEVELS</h2>
+                    <ul class="endpoint-list">
+                        <li><span class="method">LVL_1</span> <span style="color: #00ffcc;">[EASY] Best Practices & Syntax Patrol</span></li>
+                        <li><span class="method">LVL_2</span> <span style="color: #ffaa00;">[MED] Gas Optimization Hunter</span></li>
+                        <li><span class="method">LVL_3</span> <span style="color: #ff003c;">[HARD] Security Vulnerability Terminator</span></li>
+                    </ul>
+                    <div style="margin-top: 30px; padding: 15px; border: 1px solid var(--primary); background: rgba(255,85,0,0.1);">
+                        <h3 style="color: var(--primary); margin-bottom: 10px; font-family: 'Orbitron', sans-serif;">TARGET DATASET</h3>
+                        <p style="margin: 0;">18 battle-tested Solidity contracts covering 15+ vulnerability types. Real-world scenarios. Fatal consequences.</p>
                     </div>
                 </div>
             </div>
-            
-            <div class="section">
-                <h2>🎮 MISSION MODES</h2>
-                <div class="task">
-                    <strong style="color: #4CAF50;">LEVEL 1 (EASY):</strong> Best Practices & Syntax Patrol
-                </div>
-                <div class="task">
-                    <strong style="color: #FFC107;">LEVEL 2 (MEDIUM):</strong> Gas Optimization Hunter
-                </div>
-                <div class="task">
-                    <strong style="color: #F44336;">LEVEL 3 (HARD):</strong> Security Vulnerability Terminator
-                </div>
+
+            <div class="hud-panel">
+                <h2>SYSTEM ENDPOINTS</h2>
+                <ul class="endpoint-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <li><span class="method">GET</span> /health <span style="margin-left: 10px; color: #888;">// System vitals</span></li>
+                    <li><span class="method">POST</span> /reset <span style="margin-left: 10px; color: #888;">// Init mission</span></li>
+                    <li><span class="method">POST</span> /step <span style="margin-left: 10px; color: #888;">// Submit findings</span></li>
+                    <li><span class="method">GET</span> /state <span style="margin-left: 10px; color: #888;">// Env status</span></li>
+                    <li><span class="method">POST</span> /report <span style="margin-left: 10px; color: #888;">// Generate audit</span></li>
+                    <li><span class="method">GET</span> /dashboard <span style="margin-left: 10px; color: #888;">// Analytics</span></li>
+                </ul>
             </div>
-            
-            <div class="section">
-                <h2>🔌 API ARSENAL</h2>
-                <div class="endpoint"><strong>GET</strong> /health → System vitals check</div>
-                <div class="endpoint"><strong>POST</strong> /reset → Initialize mission parameters</div>
-                <div class="endpoint"><strong>POST</strong> /step → Submit vulnerability findings</div>
-                <div class="endpoint"><strong>GET</strong> /state → Query current environment state</div>
-                <div class="endpoint"><strong>POST</strong> /report → Generate full audit report</div>
-                <div class="endpoint"><strong>GET</strong> /dashboard → Access analytics dashboard</div>
-            </div>
-            
-            <div class="section">
-                <h2>💾 DATASET SPECS</h2>
-                <p style="font-size: 1.3em; line-height: 1.8; color: #ddd;">
-                    <strong style="color: #ff6b35;">18 battle-tested</strong> Solidity samples across 
-                    <strong style="color: #f7931e;">3 difficulty tiers</strong>, covering 
-                    <strong style="color: #ff6b35;">15+ vulnerability types</strong> from reentrancy attacks 
-                    to integer overflows. Real-world scenarios, real-world solutions.
+
+            <footer>
+                <p>META X PYTORCH HACKATHON 2026 // OPENENV PROTOCOL</p>
+                <p style="margin-top: 10px;">
+                    [ <a href="https://github.com/tanaymitra54/ContractSLM" target="_blank">GITHUB_REPO</a> ] | 
+                    [ <a href="https://huggingface.co/spaces/tanaymitra01/solidityguard-openenv" target="_blank">HF_SPACE</a> ]
                 </p>
-            </div>
-            
-            <div class="footer">
-                <p style="font-size: 1.2em; margin-bottom: 20px;">
-                    <strong>GitHub:</strong> <a href="https://github.com/tanaymitra54/ContractSLM">tanaymitra54/ContractSLM</a>
-                </p>
-                <p style="font-size: 1.2em; margin-bottom: 30px;">
-                    <strong>HF Space:</strong> <a href="https://huggingface.co/spaces/tanaymitra01/solidityguard-openenv">tanaymitra01/solidityguard-openenv</a>
-                </p>
-                <p style="font-size: 1em; opacity: 0.7; letter-spacing: 2px;">
-                    META X PYTORCH HACKATHON 2026 | BUILT WITH OPENENV | POWERED BY CHAOS
-                </p>
-            </div>
+            </footer>
         </div>
+
+        <script>
+            // Matrix Rain Animation
+            const canvas = document.getElementById('matrix');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレゲゼデベペオォコソトノホモヨョロゴゾドボポヴッン';
+            const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const nums = '0123456789';
+            const alphabet = katakana + latin + nums;
+
+            const fontSize = 16;
+            const columns = canvas.width / fontSize;
+            const drops = [];
+            for (let x = 0; x < columns; x++) drops[x] = 1;
+
+            const draw = () => {
+                ctx.fillStyle = 'rgba(5, 5, 5, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ff5500'; // Orange text
+                ctx.font = fontSize + 'px monospace';
+
+                for (let i = 0; i < drops.length; i++) {
+                    const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            };
+
+            setInterval(draw, 30);
+            
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        </script>
     </body>
     </html>
     """
-
 
 @app.get("/health")
 def health() -> Dict[str, str]:
