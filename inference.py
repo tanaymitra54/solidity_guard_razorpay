@@ -37,7 +37,6 @@ DEFAULT_TASKS = [
     "task_1_best_practices",
     "task_2_gas_optimization",
     "task_3_security",
-    "task_4_comprehensive_audit",
 ]
 
 MAX_STEPS = 1  # Each task has 1 step in our environment
@@ -92,7 +91,6 @@ def _build_prompt(source_code: str, task_id: str) -> str:
         "task_1_best_practices": "Find syntax and best-practice issues: missing SPDX license, old compiler version (<0.8.x), missing NatSpec comments, deprecated constructor syntax.",
         "task_2_gas_optimization": "Find gas optimization opportunities: unbounded loops, redundant storage reads, missing custom errors (use custom errors instead of require strings).",
         "task_3_security": "Find security vulnerabilities: reentrancy bugs, missing access control, tx.origin usage for authorization, integer overflow/underflow.",
-        "task_4_comprehensive_audit": "Find a complete mix of issues across best-practices, gas optimization, and security vulnerabilities.",
     }
     return (
         "Review this Solidity contract and return ONLY a JSON array of findings. "
@@ -178,46 +176,6 @@ def _fallback_actions(source_code: str, task_id: str) -> List[Dict[str, Any]]:
             }
         ]
 
-    if task_id == "task_4_comprehensive_audit":
-        findings: List[Dict[str, Any]] = []
-        if "pragma solidity" in lowered:
-            findings.append(
-                {
-                    "issue_type": "old_compiler_version",
-                    "line_number": _find_line_number(source_code, "pragma solidity", 2),
-                    "description": "Compiler pragma should use ^0.8.x",
-                    "severity": "Low",
-                }
-            )
-        if "for" in lowered and ".length" in lowered:
-            findings.append(
-                {
-                    "issue_type": "unbounded_loop",
-                    "line_number": _find_line_number(source_code, "for", 10),
-                    "description": "Loop uses dynamic array length without bounds",
-                    "severity": "Medium",
-                }
-            )
-        if "tx.origin" in lowered:
-            findings.append(
-                {
-                    "issue_type": "tx_origin_auth",
-                    "line_number": _find_line_number(source_code, "tx.origin", 11),
-                    "description": "Authorization uses tx.origin",
-                    "severity": "Critical",
-                }
-            )
-        if not findings:
-            findings = [
-                {
-                    "issue_type": "missing_spdx",
-                    "line_number": 1,
-                    "description": "Missing SPDX license identifier",
-                    "severity": "Low",
-                }
-            ]
-        return findings
-
     # Default fallback
     return [
         {
@@ -264,20 +222,22 @@ def _call_model(client: OpenAI, prompt: str) -> List[Dict[str, Any]]:
 def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "missing-key")
     env = SolidityGuardEnv()
-
-    rewards: List[float] = []
-    steps_taken = 0
-    score = 0.0
-    success = False
     task_list = [TASK_NAME] if TASK_NAME else DEFAULT_TASKS
+    global_step = 0
 
-    log_start(task=",".join(task_list), env=BENCHMARK, model=MODEL_NAME)
+    for task_id in task_list:
+        rewards: List[float] = []
+        steps_taken = 0
+        score = 0.0
+        success = False
 
-    try:
-        for task_id in task_list:
+        log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+
+        try:
             observation = env.reset(task_id=task_id)
 
             for _ in range(MAX_STEPS):
+                global_step += 1
                 steps_taken += 1
                 error: Optional[str] = None
                 action_text = "[]"
@@ -301,7 +261,7 @@ def main() -> None:
 
                 rewards.append(reward)
                 log_step(
-                    step=steps_taken,
+                    step=global_step,
                     action=action_text,
                     reward=reward,
                     done=done,
@@ -311,20 +271,18 @@ def main() -> None:
                 if done:
                     break
 
-        # Calculate final score
-        score = _safe_score(sum(rewards) / max(len(rewards), 1))
-        success = score >= SUCCESS_SCORE_THRESHOLD
+            score = _safe_score(sum(rewards) / max(len(rewards), 1))
+            success = score >= SUCCESS_SCORE_THRESHOLD
 
-    except Exception as exc:
-        # Ensure we always have valid output
-        if not rewards:
-            rewards = [0.01]
-            steps_taken = 1
-        score = _safe_score(sum(rewards) / max(len(rewards), 1))
-        print(f"[DEBUG] Exception during run: {exc}", flush=True)
+        except Exception as exc:
+            if not rewards:
+                rewards = [0.01]
+                steps_taken = 1
+            score = _safe_score(sum(rewards) / max(len(rewards), 1))
+            print(f"[DEBUG] Exception during run for {task_id}: {exc}", flush=True)
 
-    finally:
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        finally:
+            log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":
