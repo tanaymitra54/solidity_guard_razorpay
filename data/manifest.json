@@ -412,5 +412,59 @@
         "severity": "Medium"
       }
     ]
+  },
+  {
+    "id": "t4_sample_1",
+    "task_id": "task_4_comprehensive_audit",
+    "source_path": "data/samples/task1/old_pragma.sol",
+    "metadata": {
+      "contract_name": "OldPragma",
+      "compiler_version": "0.4.25",
+      "file_path": "old_pragma.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "old_compiler_version",
+        "line_number": 2,
+        "description": "Compiler version below 0.8.x",
+        "severity": "Low"
+      }
+    ]
+  },
+  {
+    "id": "t4_sample_2",
+    "task_id": "task_4_comprehensive_audit",
+    "source_path": "data/samples/task2/inefficient_loop.sol",
+    "metadata": {
+      "contract_name": "LoopGas",
+      "compiler_version": "0.8.17",
+      "file_path": "inefficient_loop.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "unbounded_loop",
+        "line_number": 10,
+        "description": "Loop uses dynamic array length without bounds",
+        "severity": "Medium"
+      }
+    ]
+  },
+  {
+    "id": "t4_sample_3",
+    "task_id": "task_4_comprehensive_audit",
+    "source_path": "data/samples/task3/tx_origin_auth.sol",
+    "metadata": {
+      "contract_name": "OriginAuth",
+      "compiler_version": "0.8.20",
+      "file_path": "tx_origin_auth.sol"
+    },
+    "labels": [
+      {
+        "issue_type": "tx_origin_auth",
+        "line_number": 11,
+        "description": "Authorization uses tx.origin",
+        "severity": "Critical"
+      }
+    ]
   }
 ]

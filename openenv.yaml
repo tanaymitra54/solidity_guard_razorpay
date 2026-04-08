@@ -9,27 +9,44 @@ tasks:
     enabled: true
     description: Detect syntax and best-practice issues in Solidity contracts.
     max_steps: 1
-    grader: "graders:grade_action"
+    grader: "graders:grade_task_1"
     graders:
-      - "graders:grade_action"
+      - name: task_1_grader
+        enabled: true
+        entrypoint: "graders:grade_task_1"
   - id: task_2_gas_optimization
     name: Gas Optimization Audit
     difficulty: medium
     enabled: true
     description: Detect gas optimization opportunities in Solidity contracts.
     max_steps: 1
-    grader: "graders:grade_action"
+    grader: "graders:grade_task_2"
     graders:
-      - "graders:grade_action"
+      - name: task_2_grader
+        enabled: true
+        entrypoint: "graders:grade_task_2"
   - id: task_3_security
     name: Security Vulnerability Audit
     difficulty: hard
     enabled: true
     description: Detect security vulnerabilities in Solidity contracts.
     max_steps: 1
-    grader: "graders:grade_action"
+    grader: "graders:grade_task_3"
     graders:
-      - "graders:grade_action"
+      - name: task_3_grader
+        enabled: true
+        entrypoint: "graders:grade_task_3"
+  - id: task_4_comprehensive_audit
+    name: Comprehensive Audit
+    difficulty: hard
+    enabled: true
+    description: Perform a complete audit covering best practices, gas, and security.
+    max_steps: 1
+    grader: "graders:grade_task_4"
+    graders:
+      - name: task_4_grader
+        enabled: true
+        entrypoint: "graders:grade_task_4"
 schemas:
   observation:
     type: object

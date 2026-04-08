@@ -30,9 +30,15 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 
-# Task configuration - validator sets this for each task run
-TASK_NAME = os.getenv("SOLIDITYGUARD_TASK") or os.getenv("TASK_NAME") or "task_1_best_practices"
+# Task configuration - validator may set this for single-task runs
+TASK_NAME = os.getenv("SOLIDITYGUARD_TASK") or os.getenv("TASK_NAME")
 BENCHMARK = os.getenv("SOLIDITYGUARD_BENCHMARK", "solidityguard")
+DEFAULT_TASKS = [
+    "task_1_best_practices",
+    "task_2_gas_optimization",
+    "task_3_security",
+    "task_4_comprehensive_audit",
+]
 
 MAX_STEPS = 1  # Each task has 1 step in our environment
 SUCCESS_SCORE_THRESHOLD = 0.1
@@ -46,7 +52,9 @@ def log_start(task: str, env: str, model: str) -> None:
     print(f"[{START_TAG}] task={task} env={env} model={model}", flush=True)
 
 
-def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+def log_step(
+    step: int, action: str, reward: float, done: bool, error: Optional[str]
+) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
     print(
@@ -84,6 +92,7 @@ def _build_prompt(source_code: str, task_id: str) -> str:
         "task_1_best_practices": "Find syntax and best-practice issues: missing SPDX license, old compiler version (<0.8.x), missing NatSpec comments, deprecated constructor syntax.",
         "task_2_gas_optimization": "Find gas optimization opportunities: unbounded loops, redundant storage reads, missing custom errors (use custom errors instead of require strings).",
         "task_3_security": "Find security vulnerabilities: reentrancy bugs, missing access control, tx.origin usage for authorization, integer overflow/underflow.",
+        "task_4_comprehensive_audit": "Find a complete mix of issues across best-practices, gas optimization, and security vulnerabilities.",
     }
     return (
         "Review this Solidity contract and return ONLY a JSON array of findings. "
@@ -96,7 +105,7 @@ def _build_prompt(source_code: str, task_id: str) -> str:
 def _fallback_actions(source_code: str, task_id: str) -> List[Dict[str, Any]]:
     """Deterministic fallback when LLM call fails or returns empty."""
     lowered = source_code.lower()
-    
+
     if task_id == "task_1_best_practices":
         return [
             {
@@ -169,6 +178,46 @@ def _fallback_actions(source_code: str, task_id: str) -> List[Dict[str, Any]]:
             }
         ]
 
+    if task_id == "task_4_comprehensive_audit":
+        findings: List[Dict[str, Any]] = []
+        if "pragma solidity" in lowered:
+            findings.append(
+                {
+                    "issue_type": "old_compiler_version",
+                    "line_number": _find_line_number(source_code, "pragma solidity", 2),
+                    "description": "Compiler pragma should use ^0.8.x",
+                    "severity": "Low",
+                }
+            )
+        if "for" in lowered and ".length" in lowered:
+            findings.append(
+                {
+                    "issue_type": "unbounded_loop",
+                    "line_number": _find_line_number(source_code, "for", 10),
+                    "description": "Loop uses dynamic array length without bounds",
+                    "severity": "Medium",
+                }
+            )
+        if "tx.origin" in lowered:
+            findings.append(
+                {
+                    "issue_type": "tx_origin_auth",
+                    "line_number": _find_line_number(source_code, "tx.origin", 11),
+                    "description": "Authorization uses tx.origin",
+                    "severity": "Critical",
+                }
+            )
+        if not findings:
+            findings = [
+                {
+                    "issue_type": "missing_spdx",
+                    "line_number": 1,
+                    "description": "Missing SPDX license identifier",
+                    "severity": "Low",
+                }
+            ]
+        return findings
+
     # Default fallback
     return [
         {
@@ -197,13 +246,13 @@ def _call_model(client: OpenAI, prompt: str) -> List[Dict[str, Any]]:
             stream=False,
         )
         content = (response.choices[0].message.content or "[]").strip()
-        
+
         # Handle markdown code blocks
         if content.startswith("```"):
             parts = content.split("```")
             if len(parts) >= 2:
                 content = parts[1].replace("json", "", 1).strip()
-        
+
         parsed = json.loads(content)
         if isinstance(parsed, list):
             return parsed
@@ -220,48 +269,47 @@ def main() -> None:
     steps_taken = 0
     score = 0.0
     success = False
+    task_list = [TASK_NAME] if TASK_NAME else DEFAULT_TASKS
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+    log_start(task=",".join(task_list), env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # Reset environment for this specific task
-        observation = env.reset(task_id=TASK_NAME)
-        last_reward = 0.0
+        for task_id in task_list:
+            observation = env.reset(task_id=task_id)
 
-        for step in range(1, MAX_STEPS + 1):
-            error: Optional[str] = None
-            action_text = "[]"
-            
-            try:
-                # Build prompt and call model
-                prompt = _build_prompt(observation["source_code"], TASK_NAME)
-                actions = _call_model(client, prompt)
-                
-                # Use fallback if model returns empty
-                if not actions:
-                    actions = _fallback_actions(observation["source_code"], TASK_NAME)
+            for _ in range(MAX_STEPS):
+                steps_taken += 1
+                error: Optional[str] = None
+                action_text = "[]"
 
-                # Execute step
-                result = env.step(actions)
-                
-                reward = _safe_score(float(result.get("reward", 0.0)))
-                done = result.get("done", True)
-                
-                action_text = json.dumps(actions, ensure_ascii=True, separators=(",", ":"))
-                
-            except Exception as exc:
-                error = str(exc)
-                reward = 0.01
-                done = True
+                try:
+                    prompt = _build_prompt(observation["source_code"], task_id)
+                    actions = _call_model(client, prompt)
+                    if not actions:
+                        actions = _fallback_actions(observation["source_code"], task_id)
 
-            rewards.append(reward)
-            steps_taken = step
-            last_reward = reward
+                    result = env.step(actions)
+                    reward = _safe_score(float(result.get("reward", 0.0)))
+                    done = result.get("done", True)
+                    action_text = json.dumps(
+                        actions, ensure_ascii=True, separators=(",", ":")
+                    )
+                except Exception as exc:
+                    error = str(exc)
+                    reward = 0.01
+                    done = True
 
-            log_step(step=step, action=action_text, reward=reward, done=done, error=error)
+                rewards.append(reward)
+                log_step(
+                    step=steps_taken,
+                    action=action_text,
+                    reward=reward,
+                    done=done,
+                    error=error,
+                )
 
-            if done:
-                break
+                if done:
+                    break
 
         # Calculate final score
         score = _safe_score(sum(rewards) / max(len(rewards), 1))

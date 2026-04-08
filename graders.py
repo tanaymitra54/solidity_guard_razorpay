@@ -24,6 +24,30 @@ class Grader:
         """Grade the action against expected results. Returns (score, details)."""
         return grade_action(action, expected)
 
+    @staticmethod
+    def grade_task_1(
+        action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+    ) -> Tuple[float, Dict[str, Any]]:
+        return grade_action(action, expected)
+
+    @staticmethod
+    def grade_task_2(
+        action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+    ) -> Tuple[float, Dict[str, Any]]:
+        return grade_action(action, expected)
+
+    @staticmethod
+    def grade_task_3(
+        action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+    ) -> Tuple[float, Dict[str, Any]]:
+        return grade_action(action, expected)
+
+    @staticmethod
+    def grade_task_4(
+        action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+    ) -> Tuple[float, Dict[str, Any]]:
+        return grade_action(action, expected)
+
 
 def _normalize_issue(issue: Dict[str, Any]) -> Issue:
     return Issue(
@@ -201,4 +225,28 @@ def grade(
     action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
 ) -> Tuple[float, Dict[str, Any]]:
     """Compatibility alias for validators expecting graders:grade."""
+    return grade_action(action, expected)
+
+
+def grade_task_1(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
+    return grade_action(action, expected)
+
+
+def grade_task_2(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
+    return grade_action(action, expected)
+
+
+def grade_task_3(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
+    return grade_action(action, expected)
+
+
+def grade_task_4(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
     return grade_action(action, expected)

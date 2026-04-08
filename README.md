@@ -15,10 +15,11 @@ SolidityGuard is an OpenEnv RL environment that trains agents to review Solidity
 
 ## Overview
 
-SolidityGuard provides a comprehensive auditing platform for Solidity smart contracts with three difficulty levels:
+SolidityGuard provides a comprehensive auditing platform for Solidity smart contracts with four tasks:
 - **Task 1 (Easy)**: Best Practices & Syntax Issues
 - **Task 2 (Medium)**: Gas Optimization Opportunities  
 - **Task 3 (Hard)**: Security Vulnerabilities
+- **Task 4 (Hard)**: Comprehensive Audit (cross-category)
 
 ## Quick Start
 
@@ -68,6 +69,7 @@ JSON array of findings:
 - Task 1: Best practices and syntax (missing SPDX, old compiler, missing NatSpec, deprecated constructor)
 - Task 2: Gas optimization (unbounded loops, redundant storage reads, custom errors)
 - Task 3: Security vulnerabilities (reentrancy, missing access control, tx.origin auth)
+- Task 4: Comprehensive audit across best practices, gas, and security
 
 ## API Endpoints
 
