@@ -14,6 +14,17 @@ class Issue:
     confidence: Optional[float] = None
 
 
+class Grader:
+    """OpenEnv-compatible grader class for MetaXScalar validator."""
+
+    @staticmethod
+    def grade(
+        action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+    ) -> Tuple[float, Dict[str, Any]]:
+        """Grade the action against expected results. Returns (score, details)."""
+        return grade_action(action, expected)
+
+
 def _normalize_issue(issue: Dict[str, Any]) -> Issue:
     return Issue(
         issue_type=str(issue.get("issue_type", "")).strip(),
@@ -28,20 +39,26 @@ def _normalize_issue(issue: Dict[str, Any]) -> Issue:
 def _match_issue(pred: Issue, expected: Issue) -> bool:
     pred_type = pred.issue_type.lower()
     exp_type = expected.issue_type.lower()
-    
+
     type_variations = {
         "missing_spdx": ["spdx", "license", "licensing"],
         "old_compiler_version": ["compiler", "pragma", "version"],
         "missing_natspec": ["natspec", "documentation", "doc comment"],
         "deprecated_constructor": ["constructor", "deprecated"],
         "unbounded_loop": ["loop", "unbounded", "dynamic array"],
-        "redundant_storage_read": ["storage read", "redundant", "cache", "sload", "repeated storage"],
+        "redundant_storage_read": [
+            "storage read",
+            "redundant",
+            "cache",
+            "sload",
+            "repeated storage",
+        ],
         "custom_error_missing": ["custom error", "require string"],
         "reentrancy": ["reentrancy", "re-entrancy", "re-entry"],
         "missing_access_control": ["access control", "authorization", "owner only"],
         "tx_origin_auth": ["tx.origin", "tx origin"],
     }
-    
+
     matched_type = True
     if pred_type != exp_type:
         matched_type = False
@@ -60,23 +77,23 @@ def _match_issue(pred: Issue, expected: Issue) -> bool:
                     break
         if not matched_type:
             return False
-    
+
     pred_sev = pred.severity.lower()
     exp_sev = expected.severity.lower()
-    
+
     severity_map = {
         "critical": ["critical", "high", "severe", "danger", "major", "important"],
         "medium": ["medium", "moderate", "warning", "medium-high", "average"],
         "low": ["low", "minor", "informational", "info", "minor issue", "cosmetic"],
         "info": ["info", "information", "low", "informational", "note"],
     }
-    
+
     if pred_sev != exp_sev:
         if exp_sev in severity_map:
             matched_sev = any(s in pred_sev for s in severity_map[exp_sev])
             if not matched_sev:
                 return False
-    
+
     return True
 
 
@@ -99,7 +116,7 @@ def _exploit_bonus(pred: Issue, exp: Issue) -> float:
 
 
 def _fix_bonus(pred: Issue, exp: Issue) -> float:
-    """Bonus for providing fix recommendation.""" 
+    """Bonus for providing fix recommendation."""
     if pred.recommended_fix and len(pred.recommended_fix.strip()) >= 20:
         return 0.1
     return 0.0
@@ -116,7 +133,9 @@ def _confidence_bonus(pred: Issue, exp: Issue) -> float:
     return 0.0
 
 
-def grade_action(action: List[Dict[str, Any]], expected: List[Dict[str, Any]]) -> Tuple[float, Dict[str, Any]]:
+def grade_action(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
     expected_issues = [_normalize_issue(item) for item in expected]
     predicted_issues = [_normalize_issue(item) for item in action]
 
@@ -155,7 +174,14 @@ def grade_action(action: List[Dict[str, Any]], expected: List[Dict[str, Any]]) -
     total_fix_bonus = min(fix_bonus_total, 0.15)
     total_confidence_bonus = min(confidence_bonus_total, 0.1)
 
-    score = base_score * 0.6 + total_line_bonus + total_exploit_bonus + total_fix_bonus + total_confidence_bonus - fp_penalty
+    score = (
+        base_score * 0.6
+        + total_line_bonus
+        + total_exploit_bonus
+        + total_fix_bonus
+        + total_confidence_bonus
+        - fp_penalty
+    )
     score = max(min(score, 1.0), 0.0)
 
     details = {
