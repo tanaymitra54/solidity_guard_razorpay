@@ -195,3 +195,10 @@ def grade_action(
         "score": round(score, 4),
     }
     return score, details
+
+
+def grade(
+    action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
+) -> Tuple[float, Dict[str, Any]]:
+    """Compatibility alias for validators expecting graders:grade."""
+    return grade_action(action, expected)
