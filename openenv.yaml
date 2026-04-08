@@ -4,20 +4,32 @@ description: OpenEnv RL environment for Solidity security review
 entrypoint: environment.py:SolidityGuardEnv
 tasks:
   - id: task_1_best_practices
+    name: Best Practices Audit
     difficulty: easy
+    enabled: true
     description: Detect syntax and best-practice issues in Solidity contracts.
     max_steps: 1
-    grader: graders:Grader.grade
+    grader: "graders:grade_action"
+    graders:
+      - "graders:grade_action"
   - id: task_2_gas_optimization
+    name: Gas Optimization Audit
     difficulty: medium
+    enabled: true
     description: Detect gas optimization opportunities in Solidity contracts.
     max_steps: 1
-    grader: graders:Grader.grade
+    grader: "graders:grade_action"
+    graders:
+      - "graders:grade_action"
   - id: task_3_security
+    name: Security Vulnerability Audit
     difficulty: hard
+    enabled: true
     description: Detect security vulnerabilities in Solidity contracts.
     max_steps: 1
-    grader: graders:Grader.grade
+    grader: "graders:grade_action"
+    graders:
+      - "graders:grade_action"
 schemas:
   observation:
     type: object
