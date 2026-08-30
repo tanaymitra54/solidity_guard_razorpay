@@ -8,11 +8,19 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
-from agents.base import AuditResult, Finding, LLMClient
+from agents.base import (
+    AuditResult,
+    Finding,
+    LLMClient,
+    RequestContext,
+    get_logger,
+)
 from agents.scanner import ScannerAgent, quick_pattern_scan
 from agents.analyzer import AnalyzerAgent
 from agents.exploit_gen import ExploitGenerator, get_exploit_template
 from agents.fix_suggester import FixSuggester, get_fix_template
+
+_log = get_logger("agents.orchestrator")
 
 
 class AgentOrchestrator:
@@ -33,7 +41,7 @@ class AgentOrchestrator:
         llm_client: Optional[LLMClient] = None,
         generate_exploits: bool = True,
         generate_fixes: bool = True,
-    ):
+    ) -> None:
         self.llm = llm_client or LLMClient()
         self.scanner = ScannerAgent(self.llm)
         self.analyzer = AnalyzerAgent(self.llm)
@@ -58,8 +66,15 @@ class AgentOrchestrator:
         Returns:
             AuditResult with findings, metrics, and exploit/fix data
         """
-        start_time = time.time()
-        metrics = {
+        ctx = RequestContext()
+        _log.info(
+            "pipeline_start",
+            request_id=ctx.request_id,
+            task_id=task_id,
+            source_lines=len(source_code.split("\n")),
+        )
+
+        metrics: Dict[str, Any] = {
             "scanner_findings": 0,
             "analyzer_findings": 0,
             "exploits_generated": 0,
@@ -70,6 +85,11 @@ class AgentOrchestrator:
         # Step 1: Quick pattern scan (instant, no LLM)
         pattern_findings = quick_pattern_scan(source_code)
         metrics["pattern_findings"] = len(pattern_findings)
+        _log.info(
+            "pattern_scan_done",
+            request_id=ctx.request_id,
+            count=len(pattern_findings),
+        )
 
         # Step 2: Run scanner and analyzer in parallel
         scanner_task = asyncio.create_task(
@@ -79,14 +99,36 @@ class AgentOrchestrator:
             self.analyzer.process(source_code, {"pattern_findings": pattern_findings})
         )
 
-        # Wait for both to complete
-        scanner_findings, analyzer_findings = await asyncio.gather(
-            scanner_task, analyzer_task
-        )
+        scanner_findings: List[Finding] = []
+        analyzer_findings: List[Finding] = []
+
+        try:
+            scanner_findings, analyzer_findings = await asyncio.gather(
+                scanner_task, analyzer_task
+            )
+        except Exception as exc:
+            # If one agent fails, still try to use the other
+            _log.error(
+                "parallel_agent_error",
+                request_id=ctx.request_id,
+                error=str(exc),
+            )
+            # Cancel any remaining tasks
+            for task in (scanner_task, analyzer_task):
+                if not task.done():
+                    task.cancel()
 
         metrics["scanner_findings"] = len(scanner_findings)
         metrics["analyzer_findings"] = len(analyzer_findings)
-        metrics["total_llm_calls"] = 2
+        ctx.llm_calls = 2
+        metrics["total_llm_calls"] = ctx.llm_calls
+
+        _log.info(
+            "agents_done",
+            request_id=ctx.request_id,
+            scanner=len(scanner_findings),
+            analyzer=len(analyzer_findings),
+        )
 
         # Step 3: Merge findings with deduplication
         merged_findings = self._merge_findings(scanner_findings, analyzer_findings)
@@ -98,42 +140,9 @@ class AgentOrchestrator:
 
         # Step 4: Generate exploits and fixes for critical findings
         if self.generate_exploits or self.generate_fixes:
-            for finding in merged_findings:
-                if finding.severity == "Critical":
-                    # Generate exploit
-                    if self.generate_exploits and self.exploit_gen:
-                        try:
-                            # Try template first for speed
-                            template = get_exploit_template(finding.issue_type)
-                            if template:
-                                finding.exploit_poc = template
-                            else:
-                                # Generate via LLM
-                                finding.exploit_poc = await self.exploit_gen.generate_exploit(
-                                    source_code, finding
-                                )
-                            metrics["exploits_generated"] += 1
-                            metrics["total_llm_calls"] += 1
-                        except Exception as e:
-                            finding.exploit_poc = f"// Failed to generate exploit: {e}"
-
-                    # Generate fix
-                    if self.generate_fixes and self.fix_suggester:
-                        try:
-                            # Try template first for speed
-                            template = get_fix_template(finding.issue_type)
-                            if template:
-                                finding.suggested_fix = template.get("fixed_code", "")
-                            else:
-                                # Generate via LLM
-                                fix = await self.fix_suggester.suggest_fix(
-                                    source_code, finding, finding.exploit_poc
-                                )
-                                finding.suggested_fix = fix.get("fixed_code", "")
-                            metrics["fixes_generated"] += 1
-                            metrics["total_llm_calls"] += 1
-                        except Exception as e:
-                            finding.suggested_fix = f"// Failed to generate fix: {e}"
+            await self._generate_remediation(
+                source_code, merged_findings, metrics, ctx
+            )
 
         # Step 5: Rank findings by severity and confidence
         merged_findings.sort(
@@ -144,7 +153,7 @@ class AgentOrchestrator:
         )
 
         # Build result
-        elapsed = time.time() - start_time
+        elapsed = ctx.elapsed()
 
         result = AuditResult(
             findings=merged_findings,
@@ -153,17 +162,83 @@ class AgentOrchestrator:
                 "task_id": task_id,
             },
             agent_metrics=metrics,
-            total_time_seconds=round(elapsed, 2),
+            request_id=ctx.request_id,
+            total_time_seconds=elapsed,
+        )
+
+        _log.info(
+            "pipeline_done",
+            request_id=ctx.request_id,
+            total_findings=len(merged_findings),
+            critical=sum(1 for f in merged_findings if f.severity == "Critical"),
+            elapsed=elapsed,
         )
 
         return result
+
+    async def _generate_remediation(
+        self,
+        source_code: str,
+        findings: List[Finding],
+        metrics: Dict[str, Any],
+        ctx: RequestContext,
+    ) -> None:
+        """Generate exploit PoCs and fix suggestions for critical findings."""
+        for finding in findings:
+            if finding.severity != "Critical":
+                continue
+
+            # Generate exploit
+            if self.generate_exploits and self.exploit_gen:
+                try:
+                    template = get_exploit_template(finding.issue_type)
+                    if template:
+                        finding.exploit_poc = template
+                    else:
+                        finding.exploit_poc = await self.exploit_gen.generate_exploit(
+                            source_code, finding
+                        )
+                        ctx.llm_calls += 1
+                    metrics["exploits_generated"] += 1
+                except Exception as exc:
+                    _log.warning(
+                        "exploit_gen_error",
+                        request_id=ctx.request_id,
+                        issue=finding.issue_type,
+                        error=str(exc),
+                    )
+                    finding.exploit_poc = f"// Exploit generation failed: {exc}"
+
+            # Generate fix
+            if self.generate_fixes and self.fix_suggester:
+                try:
+                    template = get_fix_template(finding.issue_type)
+                    if template:
+                        finding.suggested_fix = template.get("fixed_code", "")
+                    else:
+                        fix = await self.fix_suggester.suggest_fix(
+                            source_code, finding, finding.exploit_poc
+                        )
+                        finding.suggested_fix = fix.get("fixed_code", "")
+                        ctx.llm_calls += 1
+                    metrics["fixes_generated"] += 1
+                except Exception as exc:
+                    _log.warning(
+                        "fix_gen_error",
+                        request_id=ctx.request_id,
+                        issue=finding.issue_type,
+                        error=str(exc),
+                    )
+                    finding.suggested_fix = f"// Fix generation failed: {exc}"
+
+        metrics["total_llm_calls"] = ctx.llm_calls
 
     def _merge_findings(
         self, scanner_findings: List[Finding], analyzer_findings: List[Finding]
     ) -> List[Finding]:
         """Merge findings from multiple agents, deduplicating by issue type and location."""
-        merged = []
-        seen = set()
+        merged: List[Finding] = []
+        seen: set = set()
 
         for finding in scanner_findings + analyzer_findings:
             key = self._make_dedup_key(finding)
@@ -175,13 +250,9 @@ class AgentOrchestrator:
 
     def _make_dedup_key(self, finding: Finding) -> tuple:
         """Create a deduplication key for a finding."""
-        # Normalize issue type
         issue_type = finding.issue_type.lower().replace("_", "").replace("-", "")
-
-        # Line range (allow 5 line tolerance)
         line = finding.line_number or 0
         line_range = (max(0, line - 5), line + 5)
-
         return (issue_type, line_range)
 
     def _is_duplicate(self, finding: Finding, existing: List[Finding]) -> bool:

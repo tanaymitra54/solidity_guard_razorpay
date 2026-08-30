@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from agents.base import BaseAgent, Finding, LLMClient
+from agents.base import BaseAgent, Finding, LLMClient, get_logger
 
+_log = get_logger("agents.analyzer")
 
 ANALYZER_PROMPT = """You are an elite smart contract security auditor with 10+ years of experience. Perform a deep security analysis of this Solidity contract.
 
@@ -58,7 +59,7 @@ class AnalyzerAgent(BaseAgent):
     name = "analyzer"
     description = "Deep LLM-powered vulnerability analysis"
 
-    def __init__(self, llm_client: Optional[LLMClient] = None):
+    def __init__(self, llm_client: Optional[LLMClient] = None) -> None:
         super().__init__(llm_client)
 
     async def process(
@@ -67,11 +68,11 @@ class AnalyzerAgent(BaseAgent):
         """Perform deep analysis on the contract."""
         context = context or {}
 
-        # Get scanner findings from context if available
         scanner_findings = context.get("scanner_findings", [])
         scanner_summary = self._summarize_findings(scanner_findings)
 
-        # Run deep analysis
+        _log.info("analyzer_start", scanner_prior=len(scanner_findings))
+
         prompt = ANALYZER_PROMPT.format(
             source_code=source_code,
             scanner_findings=scanner_summary,
@@ -80,7 +81,7 @@ class AnalyzerAgent(BaseAgent):
         try:
             response = await self.llm.generate_json(prompt)
 
-            findings = []
+            findings: List[Finding] = []
             for item in response.get("findings", []):
                 finding = Finding(
                     issue_type=item.get("issue_type", "unknown"),
@@ -99,10 +100,12 @@ class AnalyzerAgent(BaseAgent):
             # Merge verified scanner findings with new findings
             all_findings = verified + [f for f in findings if f not in verified]
 
+            _log.info("analyzer_done", new_findings=len(findings), verified=len(verified))
+
             return all_findings
 
-        except Exception as e:
-            print(f"[Analyzer] Error: {e}")
+        except Exception as exc:
+            _log.error("analyzer_error", error=str(exc))
             return []
 
     def _summarize_findings(self, findings: List[Finding]) -> str:
@@ -110,7 +113,7 @@ class AnalyzerAgent(BaseAgent):
         if not findings:
             return "No prior findings."
 
-        summary_lines = []
+        summary_lines: List[str] = []
         for f in findings[:10]:  # Limit to prevent token explosion
             summary_lines.append(
                 f"- {f.issue_type} (line {f.line_number}, {f.severity}): {f.description[:100]}"
@@ -126,22 +129,18 @@ class AnalyzerAgent(BaseAgent):
         If analyzer found similar issues, boost confidence.
         If analyzer didn't find them, slightly reduce confidence.
         """
-        verified = []
+        verified: List[Finding] = []
 
         for scanner_f in scanner_findings:
-            # Check if analyzer found something similar
             similar = self._find_similar_finding(scanner_f, analyzer_findings)
 
             if similar:
-                # Boost confidence if analyzer agrees
                 scanner_f.confidence = min(1.0, scanner_f.confidence + 0.1)
                 scanner_f.metadata["verified_by"] = "analyzer"
-                verified.append(scanner_f)
             else:
-                # Slightly reduce confidence if analyzer didn't find it
                 scanner_f.confidence = max(0.3, scanner_f.confidence - 0.1)
                 scanner_f.metadata["unverified"] = True
-                verified.append(scanner_f)
+            verified.append(scanner_f)
 
         return verified
 
@@ -150,7 +149,6 @@ class AnalyzerAgent(BaseAgent):
     ) -> Optional[Finding]:
         """Find a similar finding in the candidate list."""
         for candidate in candidates:
-            # Same issue type and nearby line number
             if finding.issue_type.lower() == candidate.issue_type.lower():
                 if finding.line_number and candidate.line_number:
                     if abs(finding.line_number - candidate.line_number) <= 5:
