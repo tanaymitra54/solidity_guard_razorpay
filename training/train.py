@@ -47,6 +47,7 @@ from training.dataset import (
     VULN_ID2LABEL,
     VulnerabilityClassificationDataset,
     load_manifest,
+    load_combined_data,
     augment_samples,
     split_data,
 )
@@ -391,8 +392,14 @@ def main() -> None:
     logger.info(f"  Parameters: {param_count:,} total, {trainable_count:,} trainable")
 
     # --- Load data ---
-    logger.info(f"Loading dataset from {config.manifest_path}")
-    samples = load_manifest(config.manifest_path)
+    # Try combined data first, fall back to manifest
+    combined_path = Path(config.manifest_path).parent.parent / "training" / "data" / "combined.json"
+    if combined_path.exists():
+        logger.info(f"Loading combined dataset from {combined_path}")
+        samples = load_combined_data(str(combined_path))
+    else:
+        logger.info(f"Loading dataset from {config.manifest_path}")
+        samples = load_manifest(config.manifest_path)
     logger.info(f"  Loaded {len(samples)} contracts")
 
     if config.augment:

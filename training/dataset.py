@@ -338,6 +338,33 @@ def split_data(
 
 
 # ---------------------------------------------------------------------------
+# Load from downloaded SmartBugs data
+# ---------------------------------------------------------------------------
+
+def load_combined_data(data_path: str) -> List[ContractSample]:
+    """Load combined.json produced by download_data.py."""
+    data_path = Path(data_path)
+    if not data_path.exists():
+        return []
+
+    with open(data_path) as f:
+        entries = json.load(f)
+
+    samples: List[ContractSample] = []
+    for entry in entries:
+        samples.append(ContractSample(
+            id=entry["id"],
+            task_id=entry.get("task_id", "unknown"),
+            source_code=entry["source_code"],
+            contract_name=entry.get("contract_name", "Unknown"),
+            compiler_version=entry.get("compiler_version", "unknown"),
+            labels=entry.get("labels", []),
+        ))
+
+    return samples
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -346,12 +373,18 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Prepare SolidityGuard dataset")
     parser.add_argument("--manifest", default="data/manifest.json", help="Path to manifest.json")
+    parser.add_argument("--combined", default=None, help="Path to combined.json (SmartBugs + SolidityGuard)")
     parser.add_argument("--augment", action="store_true", help="Augment with per-label examples")
     parser.add_argument("--output", default=None, help="Output directory for splits")
     args = parser.parse_args()
 
-    print(f"Loading manifest: {args.manifest}")
-    samples = load_manifest(args.manifest)
+    # Load data - prefer combined if available
+    if args.combined and Path(args.combined).exists():
+        print(f"Loading combined data: {args.combined}")
+        samples = load_combined_data(args.combined)
+    else:
+        print(f"Loading manifest: {args.manifest}")
+        samples = load_manifest(args.manifest)
     print(f"  Loaded {len(samples)} contracts")
 
     if args.augment:
