@@ -1,0 +1,32 @@
+# Graph CodeBERT Fine-Tuning Config
+# For H100 GPU server
+
+# Model
+model_name: "microsoft/graphcodebert-base"
+max_length: 512
+
+# Data
+manifest_path: "data/manifest.json"
+augment: true
+train_ratio: 0.7
+val_ratio: 0.15
+seed: 42
+
+# Training - H100 optimized
+epochs: 20
+batch_size: 16          # H100 has 80GB VRAM, can go higher
+gradient_accumulation_steps: 1
+learning_rate: 2e-5
+weight_decay: 0.01
+warmup_ratio: 0.1
+max_grad_norm: 1.0
+
+# Output
+output_dir: "training/checkpoints"
+logging_steps: 5
+eval_steps: 10
+save_best: true
+early_stopping_patience: 5
+
+# Device
+device: "auto"

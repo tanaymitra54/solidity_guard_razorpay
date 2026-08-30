@@ -1,5 +1,14 @@
+# --- Serving ---
 fastapi>=0.110.0
 openai>=1.30.0
 pydantic>=2.0.0
 uvicorn>=0.27.0
 openenv-core>=0.2.0
+
+# --- Training (Graph CodeBERT fine-tuning) ---
+torch>=2.1.0
+transformers>=4.36.0
+datasets>=2.16.0
+scikit-learn>=1.3.0
+pyyaml>=6.0
+accelerate>=0.25.0
