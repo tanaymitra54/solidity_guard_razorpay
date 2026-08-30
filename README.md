@@ -175,6 +175,84 @@ All agents emit JSON-formatted logs with request tracing:
 {"event": "pipeline_done", "request_id": "a1b2c3d4e5f6", "total_findings": 3, "critical": 1, "elapsed": 4.2}
 ```
 
+## Graph CodeBERT Fine-Tuning
+
+SolidityGuard includes a complete fine-tuning pipeline for Microsoft Graph CodeBERT on the Solidity vulnerability detection task.
+
+### One-Command Launch (H100 Server)
+
+```bash
+git clone https://github.com/tanaymitra54/solidity_guard_razorpay.git
+cd solidity_guard_razorpay
+bash training/run.sh
+```
+
+This will:
+1. Install dependencies (PyTorch, Transformers, etc.)
+2. Prepare the dataset from `data/manifest.json`
+3. Pull `microsoft/graphcodebert-base` from HuggingFace (~500MB)
+4. Fine-tune for 20 epochs with early stopping
+5. Evaluate on test set and report F1/accuracy
+
+### Manual Steps
+
+```bash
+# Prepare dataset
+python training/dataset.py --manifest data/manifest.json --augment --output training/cache
+
+# Fine-tune (downloads model on first run)
+python training/train.py --config training/config.yaml
+
+# Evaluate
+python training/evaluate.py --model training/checkpoints/best --split test
+```
+
+### Training Config (`training/config.yaml`)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model_name` | `microsoft/graphcodebert-base` | HuggingFace model ID |
+| `epochs` | 20 | Training epochs |
+| `batch_size` | 16 | Batch size (H100: can go to 32) |
+| `learning_rate` | 2e-5 | AdamW learning rate |
+| `max_length` | 512 | Max token length |
+| `early_stopping_patience` | 5 | Stop if no improvement for N epochs |
+
+### Model Output
+
+```
+training/checkpoints/
+├── best/              # Best model by val F1
+│   ├── config.json
+│   ├── model.safetensors
+│   ├── tokenizer.json
+│   └── label_map.json
+├── final/             # Last epoch model
+├── training_history.json
+├── test_results.json
+└── config.json
+```
+
+### Fine-Tuning Architecture
+
+```
+Input: Solidity source code (max 512 tokens)
+  ↓
+Graph CodeBERT (microsoft/graphcodebert-base)
+  ↓  [CLS] token embedding (768-dim)
+  ↓
+Dropout (0.1)
+  ↓
+Linear (768 → 12 classes)
+  ↓
+Output: vulnerability type prediction
+  ↓
+Classes: safe, reentrancy, access_control, tx_origin_auth,
+         integer_overflow, unsafe_delegatecall, weak_randomness,
+         unbounded_loop, redundant_storage, gas_optimization,
+         best_practice, other
+```
+
 ## File Structure
 
 ```
@@ -189,12 +267,19 @@ ContractSLM/
 │   ├── exploit_gen.py      # Foundry PoC exploit generation
 │   ├── fix_suggester.py    # Targeted fix generation
 │   └── __init__.py
+├── training/
+│   ├── dataset.py          # Dataset prep: manifest → train/val/test splits
+│   ├── train.py            # Graph CodeBERT fine-tuning pipeline
+│   ├── evaluate.py         # Evaluation with metrics + report
+│   ├── config.yaml         # Hyperparameters for H100
+│   ├── run.sh              # One-command launch script
+│   └── __init__.py
 ├── environment.py          # OpenEnv core (reset/step/state)
 ├── graders.py              # 5-component reward scoring
 ├── multi_agent.py          # Static multi-agent system (no LLM)
 ├── inference.py            # LLM inference with [START]/[STEP]/[END] logging
 ├── openenv.yaml            # OpenEnv spec
-├── requirements.txt        # Dependencies
+├── requirements.txt        # Dependencies (serving + training)
 ├── Dockerfile              # Container config
 ├── data/
 │   ├── manifest.json       # 21 samples with labels

@@ -43,3 +43,10 @@ env/
 
 # Logs
 *.log
+
+# Training artifacts
+training/cache/
+training/checkpoints/
+*.safetensors
+*.bin
+*.pt
