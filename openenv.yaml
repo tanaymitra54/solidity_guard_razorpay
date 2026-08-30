@@ -18,6 +18,11 @@ tasks:
     description: Detect security vulnerabilities in Solidity contracts.
     max_steps: 1
     grader: "graders:grade_task_3"
+  - id: task_4_comprehensive_audit
+    difficulty: hard
+    description: Comprehensive audit across all categories (best practices, gas, security).
+    max_steps: 1
+    grader: "graders:grade_task_4"
 schemas:
   observation:
     type: object
