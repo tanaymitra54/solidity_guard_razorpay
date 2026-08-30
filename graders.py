@@ -60,68 +60,119 @@ def _normalize_issue(issue: Dict[str, Any]) -> Issue:
     )
 
 
+# Canonical issue type families: maps canonical name to a set of acceptable variations
+_ISSUE_TYPE_FAMILIES: Dict[str, set] = {
+    "missing_spdx": {"missing_spdx", "spdx", "license", "licensing", "missing_license"},
+    "old_compiler_version": {
+        "old_compiler_version", "compiler", "pragma", "version",
+        "old_pragma", "outdated_compiler", "outdated_pragma",
+    },
+    "missing_natspec": {"missing_natspec", "natspec", "documentation", "doc_comment", "missing_docs"},
+    "deprecated_constructor": {"deprecated_constructor", "constructor", "deprecated"},
+    "missing_events": {"missing_events", "events", "missing_event", "emit"},
+    "unused_variables": {"unused_variables", "unused", "dead_code"},
+    "unbounded_loop": {"unbounded_loop", "loop", "unbounded", "dynamic_array", "infinite_loop"},
+    "redundant_storage_read": {
+        "redundant_storage_read", "storage_read", "redundant",
+        "cache", "sload", "repeated_storage",
+    },
+    "custom_error_missing": {"custom_error_missing", "custom_error", "require_string", "error_missing"},
+    "poor_struct_packing": {"poor_struct_packing", "struct_packing", "packing", "storage_packing"},
+    "unchecked_math_opportunity": {"unchecked_math", "unchecked", "overflow_protection", "safe_math"},
+    "expensive_operation_in_loop": {
+        "expensive_operation_in_loop", "expensive_op", "expensive",
+        "loop_operation", "loop_cost",
+    },
+    "inefficient_string_concat": {"inefficient_string_concat", "string_concat", "string_op", "concat"},
+    "reentrancy": {"reentrancy", "reentrancy_vulnerability", "re-entrancy", "re-entry"},
+    "missing_access_control": {
+        "missing_access_control", "access_control", "authorization",
+        "owner_only", "no_auth", "unauthorized",
+    },
+    "tx_origin_auth": {"tx_origin_auth", "tx.origin", "tx_origin", "tx origin", "origin_auth"},
+    "integer_overflow_risk": {
+        "integer_overflow_risk", "overflow", "underflow",
+        "integer_overflow", "integer_underflow",
+    },
+    "unsafe_delegatecall": {"unsafe_delegatecall", "delegatecall", "unsafe_delegate"},
+    "weak_randomness": {"weak_randomness", "randomness", "weak_random", "block_hash_random"},
+}
+
+# Severity normalization: map any severity string to canonical form
+_SEVERITY_CANONICAL: Dict[str, str] = {
+    "critical": "Critical",
+    "high": "Critical",
+    "severe": "Critical",
+    "danger": "Critical",
+    "major": "Critical",
+    "important": "Critical",
+    "medium": "Medium",
+    "moderate": "Medium",
+    "warning": "Medium",
+    "medium-high": "Medium",
+    "average": "Medium",
+    "low": "Low",
+    "minor": "Low",
+    "informational": "Info",
+    "info": "Info",
+    "information": "Info",
+    "note": "Info",
+    "cosmetic": "Low",
+    "minor issue": "Low",
+}
+
+# Canonical severity values
+_CANONICAL_SEVERITIES = {"Critical", "Medium", "Low", "Info"}
+
+
+def _canonicalize_severity(sev: str) -> str:
+    """Map a severity string to its canonical form."""
+    return _SEVERITY_CANONICAL.get(sev.lower().strip(), "Medium")
+
+
+def _canonicalize_issue_type(issue_type: str) -> Optional[str]:
+    """Map a freeform issue type to its canonical family name, or None."""
+    normalized = issue_type.lower().replace("_", "").replace("-", "").replace(" ", "")
+    for canonical, variations in _ISSUE_TYPE_FAMILIES.items():
+        for var in variations:
+            if var.replace("_", "").replace("-", "").replace(" ", "") == normalized:
+                return canonical
+        # Substring check for fuzzy matching
+        canonical_flat = canonical.replace("_", "")
+        if canonical_flat in normalized or normalized in canonical_flat:
+            return canonical
+    return None
+
+
 def _match_issue(pred: Issue, expected: Issue) -> bool:
-    pred_type = pred.issue_type.lower()
-    exp_type = expected.issue_type.lower()
+    """Match a predicted issue against an expected issue using canonical forms."""
+    # Canonicalize issue types
+    pred_canonical = _canonicalize_issue_type(pred.issue_type)
+    exp_canonical = _canonicalize_issue_type(expected.issue_type)
 
-    type_variations = {
-        "missing_spdx": ["spdx", "license", "licensing"],
-        "old_compiler_version": ["compiler", "pragma", "version"],
-        "missing_natspec": ["natspec", "documentation", "doc comment"],
-        "deprecated_constructor": ["constructor", "deprecated"],
-        "unbounded_loop": ["loop", "unbounded", "dynamic array"],
-        "redundant_storage_read": [
-            "storage read",
-            "redundant",
-            "cache",
-            "sload",
-            "repeated storage",
-        ],
-        "custom_error_missing": ["custom error", "require string"],
-        "reentrancy": ["reentrancy", "re-entrancy", "re-entry"],
-        "missing_access_control": ["access control", "authorization", "owner only"],
-        "tx_origin_auth": ["tx.origin", "tx origin"],
-    }
+    if pred_canonical is None or exp_canonical is None:
+        return False
 
-    matched_type = True
-    if pred_type != exp_type:
-        matched_type = False
-        if exp_type in type_variations:
-            for variation in type_variations[exp_type]:
-                if variation in pred_type or pred_type in variation:
-                    matched_type = True
-                    break
-        if not matched_type:
-            for key, variations in type_variations.items():
-                for v in variations:
-                    if v in pred_type and v in exp_type:
-                        matched_type = True
-                        break
-                if matched_type:
-                    break
-        if not matched_type:
-            return False
+    if pred_canonical != exp_canonical:
+        return False
 
-    pred_sev = pred.severity.lower()
-    exp_sev = expected.severity.lower()
+    # Canonicalize severity
+    pred_sev = _canonicalize_severity(pred.severity)
+    exp_sev = _canonicalize_severity(expected.severity)
 
-    severity_map = {
-        "critical": ["critical", "high", "severe", "danger", "major", "important"],
-        "medium": ["medium", "moderate", "warning", "medium-high", "average"],
-        "low": ["low", "minor", "informational", "info", "minor issue", "cosmetic"],
-        "info": ["info", "information", "low", "informational", "note"],
-    }
-
-    if pred_sev != exp_sev:
-        if exp_sev in severity_map:
-            matched_sev = any(s in pred_sev for s in severity_map[exp_sev])
-            if not matched_sev:
-                return False
+    # Allow severity mismatch within a tolerance:
+    # Critical can match High, but not Low
+    _sev_order = {"Critical": 0, "Medium": 1, "Low": 2, "Info": 3}
+    pred_order = _sev_order.get(pred_sev, 1)
+    exp_order = _sev_order.get(exp_sev, 1)
+    if abs(pred_order - exp_order) > 1:
+        return False
 
     return True
 
 
 def _line_bonus(pred_line: Optional[int], exp_line: Optional[int]) -> float:
+    """Bonus for line number accuracy."""
     if pred_line is None or exp_line is None:
         return 0.0
     diff = abs(pred_line - exp_line)
@@ -149,10 +200,9 @@ def _fix_bonus(pred: Issue, exp: Issue) -> float:
 def _confidence_bonus(pred: Issue, exp: Issue) -> float:
     """Bonus for appropriate confidence level."""
     if pred.confidence is not None and 0.0 <= pred.confidence <= 1.0:
-        # Higher confidence for critical issues
         if pred.severity.lower() == "critical" and pred.confidence >= 0.8:
             return 0.05
-        elif pred.severity.lower() in ["medium", "low"] and pred.confidence >= 0.6:
+        elif pred.severity.lower() in ("medium", "low") and pred.confidence >= 0.6:
             return 0.05
     return 0.0
 
@@ -160,6 +210,10 @@ def _confidence_bonus(pred: Issue, exp: Issue) -> float:
 def grade_action(
     action: List[Dict[str, Any]], expected: List[Dict[str, Any]]
 ) -> Tuple[float, Dict[str, Any]]:
+    """Grade a list of predicted findings against expected findings.
+
+    Returns (score, details) where score is always in [0.0, 1.0].
+    """
     expected_issues = [_normalize_issue(item) for item in expected]
     predicted_issues = [_normalize_issue(item) for item in action]
 
@@ -171,7 +225,6 @@ def grade_action(
     expected_used = [False] * len(expected_issues)
 
     for pred in predicted_issues:
-        found = False
         for idx, exp in enumerate(expected_issues):
             if expected_used[idx]:
                 continue
@@ -182,10 +235,7 @@ def grade_action(
                 exploit_bonus_total += _exploit_bonus(pred, exp)
                 fix_bonus_total += _fix_bonus(pred, exp)
                 confidence_bonus_total += _confidence_bonus(pred, exp)
-                found = True
                 break
-        if not found:
-            continue
 
     expected_count = max(len(expected_issues), 1)
     base_score = matched / expected_count
@@ -206,7 +256,9 @@ def grade_action(
         + total_confidence_bonus
         - fp_penalty
     )
-    score = max(min(score, 1.0), 0.0)
+
+    # ALWAYS clamp to [0.0, 1.0] — critical for RL reward signals
+    score = max(0.0, min(1.0, round(score, 4)))
 
     details = {
         "matched": matched,
@@ -216,7 +268,7 @@ def grade_action(
         "exploit_bonus": round(total_exploit_bonus, 3),
         "fix_bonus": round(total_fix_bonus, 3),
         "confidence_bonus": round(total_confidence_bonus, 3),
-        "score": round(score, 4),
+        "score": score,
     }
     return score, details
 

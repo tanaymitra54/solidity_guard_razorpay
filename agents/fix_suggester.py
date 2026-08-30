@@ -4,10 +4,12 @@ Fix Suggester Agent - Generate verified patches for vulnerabilities.
 
 from __future__ import annotations
 
+import difflib
 from typing import Any, Dict, List, Optional
 
-from agents.base import BaseAgent, Finding, LLMClient
+from agents.base import BaseAgent, Finding, LLMClient, get_logger
 
+_log = get_logger("agents.fix_suggester")
 
 FIX_PROMPT = """You are a smart contract security expert specializing in fixing vulnerabilities while preserving functionality.
 
@@ -50,16 +52,13 @@ class FixSuggester(BaseAgent):
     name = "fix_suggester"
     description = "Generate verified patches for vulnerabilities"
 
-    def __init__(self, llm_client: Optional[LLMClient] = None):
+    def __init__(self, llm_client: Optional[LLMClient] = None) -> None:
         super().__init__(llm_client)
 
     async def process(
         self, source_code: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Finding]:
-        """
-        Process is not the main entry point for this agent.
-        Use suggest_fix() instead.
-        """
+        """Process is not the main entry point for this agent. Use suggest_fix() instead."""
         return []
 
     async def suggest_fix(
@@ -69,6 +68,8 @@ class FixSuggester(BaseAgent):
         exploit_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a fix for the vulnerability."""
+        _log.info("fix_gen_start", issue=finding.issue_type, line=finding.line_number)
+
         prompt = FIX_PROMPT.format(
             source_code=source_code,
             issue_type=finding.issue_type,
@@ -76,29 +77,25 @@ class FixSuggester(BaseAgent):
             description=finding.description,
         )
 
-        # If we have exploit code, add it for context
         if exploit_code:
             prompt += f"\n\nExploit code to block:\n```solidity\n{exploit_code}\n```"
 
         try:
             response = await self.llm.generate_json(prompt)
+            _log.info("fix_gen_done", issue=finding.issue_type)
             return response
 
-        except Exception as e:
-            print(f"[FixSuggester] Error: {e}")
+        except Exception as exc:
+            _log.error("fix_gen_error", issue=finding.issue_type, error=str(exc))
             return {
-                "fix_description": f"Failed to generate fix: {e}",
+                "fix_description": f"Failed to generate fix: {exc}",
                 "affected_lines": [],
                 "original_code": "",
                 "fixed_code": "",
                 "explanation": "",
             }
 
-    def apply_fix(
-        self,
-        source_code: str,
-        fix: Dict[str, Any],
-    ) -> str:
+    def apply_fix(self, source_code: str, fix: Dict[str, Any]) -> str:
         """Apply a fix to the source code and return the modified code."""
         lines = source_code.split("\n")
         affected_lines = fix.get("affected_lines", [])
@@ -107,30 +104,28 @@ class FixSuggester(BaseAgent):
         if not affected_lines or not fixed_code:
             return source_code
 
-        # Convert to 0-indexed
         start_line = min(affected_lines) - 1
         end_line = max(affected_lines)
 
-        # Replace the affected lines
         new_lines = lines[:start_line] + fixed_code.split("\n") + lines[end_line:]
 
         return "\n".join(new_lines)
 
 
 # Pre-built fix suggestions for common vulnerability types
-FIX_TEMPLATES = {
+FIX_TEMPLATES: Dict[str, Dict[str, Any]] = {
     "reentrancy": {
         "fix_description": "Move state update before external call (checks-effects-interactions pattern)",
         "affected_lines": [14, 15, 16],
-        "original_code": "        (bool success, ) = msg.sender.call{value: amount}(\"\");\n        require(success);\n        balances[msg.sender] = 0;",
-        "fixed_code": "        balances[msg.sender] = 0;  // Update state BEFORE external call\n        (bool success, ) = msg.sender.call{value: amount}(\"\");\n        require(success);",
+        "original_code": '        (bool success, ) = msg.sender.call{value: amount}("");\n        require(success);\n        balances[msg.sender] = 0;',
+        "fixed_code": '        balances[msg.sender] = 0;  // Update state BEFORE external call\n        (bool success, ) = msg.sender.call{value: amount}("");\n        require(success);',
         "explanation": "By updating the balance before the external call, reentrant calls will see the updated (zero) balance and cannot drain funds repeatedly.",
     },
     "tx_origin_auth": {
         "fix_description": "Replace tx.origin with msg.sender for authorization",
         "affected_lines": [10],
-        "original_code": "        require(tx.origin == owner, \"Not authorized\");",
-        "fixed_code": "        require(msg.sender == owner, \"Not authorized\");",
+        "original_code": '        require(tx.origin == owner, "Not authorized");',
+        "fixed_code": '        require(msg.sender == owner, "Not authorized");',
         "explanation": "msg.sender is the immediate caller, preventing phishing attacks where a malicious contract forwards calls from a tricked user.",
     },
     "access_control": {
@@ -143,8 +138,8 @@ FIX_TEMPLATES = {
     "unchecked_return_value": {
         "fix_description": "Check the return value of the external call",
         "affected_lines": [12],
-        "original_code": "        (bool success, ) = target.call{value: amount}(\"\");",
-        "fixed_code": "        (bool success, ) = target.call{value: amount}(\"\");\n        require(success, \"Call failed\");",
+        "original_code": '        (bool success, ) = target.call{value: amount}("");',
+        "fixed_code": '        (bool success, ) = target.call{value: amount}("");\n        require(success, "Call failed");',
         "explanation": "Checking the return value ensures the call succeeded before proceeding.",
     },
 }
@@ -157,8 +152,6 @@ def get_fix_template(issue_type: str) -> Optional[Dict[str, Any]]:
 
 def generate_diff(original: str, fixed: str) -> str:
     """Generate a simple diff between original and fixed code."""
-    import difflib
-
     original_lines = original.splitlines(keepends=True)
     fixed_lines = fixed.splitlines(keepends=True)
 
