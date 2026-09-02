@@ -1,0 +1,44 @@
+{
+  "labels": [
+    "safe",
+    "reentrancy",
+    "access_control",
+    "tx_origin_auth",
+    "integer_overflow",
+    "unsafe_delegatecall",
+    "weak_randomness",
+    "unbounded_loop",
+    "redundant_storage",
+    "gas_optimization",
+    "best_practice",
+    "other"
+  ],
+  "id2label": {
+    "0": "safe",
+    "1": "reentrancy",
+    "2": "access_control",
+    "3": "tx_origin_auth",
+    "4": "integer_overflow",
+    "5": "unsafe_delegatecall",
+    "6": "weak_randomness",
+    "7": "unbounded_loop",
+    "8": "redundant_storage",
+    "9": "gas_optimization",
+    "10": "best_practice",
+    "11": "other"
+  },
+  "label2id": [
+    "safe",
+    "reentrancy",
+    "access_control",
+    "tx_origin_auth",
+    "integer_overflow",
+    "unsafe_delegatecall",
+    "weak_randomness",
+    "unbounded_loop",
+    "redundant_storage",
+    "gas_optimization",
+    "best_practice",
+    "other"
+  ]
+}

@@ -46,8 +46,11 @@ env/
 
 # Training artifacts
 training/cache/
-training/checkpoints/
+training/checkpoints/*
+!training/checkpoints/best/
+!training/checkpoints/best/**
+!training/checkpoints/test_results.json
 training/data/
-*.safetensors
+# *.safetensors  # tracked via Git LFS under training/checkpoints/best
 *.bin
 *.pt

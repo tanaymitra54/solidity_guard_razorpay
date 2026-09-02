@@ -1,0 +1,12 @@
+{
+  "loss": 1.2558574118921835,
+  "accuracy": 0.5622406639004149,
+  "f1_macro": 0.46548,
+  "f1_per_class": {
+    "safe": 0.6935,
+    "reentrancy": 0.4606,
+    "access_control": 0.2,
+    "integer_overflow": 0.6336,
+    "other": 0.3397
+  }
+}
