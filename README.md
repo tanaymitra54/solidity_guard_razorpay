@@ -195,7 +195,13 @@ This will:
 5. Fine-tune for 20 epochs with early stopping
 6. Evaluate on the held-out wild test split
 
-After training, copy `training/checkpoints/best/` to the serving host and set `GRAPHCODEBERT_PATH`. The scanner uses it as a first-pass detector (Slither + Graph CodeBERT + LLM).
+After training, copy `training/checkpoints/best/` to the serving host and set `GRAPHCODEBERT_PATH`, or point at the Hub model:
+
+```bash
+export GRAPHCODEBERT_PATH=tanaymitra01/graphcodebert-vulnerability-detector
+```
+
+The scanner uses it as a first-pass detector (Slither + Graph CodeBERT + LLM).
 ### Manual Steps
 
 ```bash
@@ -302,7 +308,7 @@ ContractSLM/
 | `HF_TOKEN` | For LLM | Hugging Face API key |
 | `LLM_BASE_URL` | Optional | Override LLM endpoint for agents |
 | `LLM_API_KEY` | Optional | Override API key for agents |
-| `GRAPHCODEBERT_PATH` | Optional | Fine-tuned checkpoint dir (default: `training/checkpoints/best`) |
+| `GRAPHCODEBERT_PATH` | Optional | Local checkpoint dir or HF Hub ID (default: `training/checkpoints/best`; hosted: `tanaymitra01/graphcodebert-vulnerability-detector`) |
 | `GRAPHCODEBERT_THRESHOLD` | Optional | Min confidence to emit a finding (default: `0.5`) |
 
 ## Deployment

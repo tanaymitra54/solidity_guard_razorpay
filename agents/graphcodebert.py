@@ -5,7 +5,9 @@ Loads a fine-tuned checkpoint (sequence classification) and emits a Finding
 when top-1 class is not "safe" and confidence >= threshold.
 
 Env:
-  GRAPHCODEBERT_PATH       default: training/checkpoints/best
+  GRAPHCODEBERT_PATH       local dir or HF Hub ID
+                           default: training/checkpoints/best
+                           example: tanaymitra01/graphcodebert-vulnerability-detector
   GRAPHCODEBERT_THRESHOLD  default: 0.5
 """
 
@@ -70,14 +72,18 @@ class GraphCodeBERTDetector:
         """Health-friendly status (does not force a load)."""
         path = Path(self.model_path)
         exists = path.exists()
+        is_hub_id = (not exists) and ("/" in self.model_path) and not self.model_path.startswith(".")
+        warning = self._load_error
+        if warning is None and not exists and not is_hub_id and not self.loaded:
+            warning = f"checkpoint missing: {path}"
         return {
             "enabled": True,
             "loaded": self.loaded,
-            "path": str(path),
-            "path_exists": exists,
+            "path": str(self.model_path),
+            "path_exists": exists or is_hub_id,
+            "hub_id": is_hub_id,
             "threshold": self.threshold,
-            "warning": self._load_error
-            or (None if exists or self.loaded else f"checkpoint missing: {path}"),
+            "warning": warning,
         }
 
     def _ensure_loaded(self) -> bool:
@@ -92,24 +98,31 @@ class GraphCodeBERTDetector:
             if self._tried_load:
                 return False
             self._tried_load = True
-            path = Path(self.model_path)
-            if not path.exists():
-                self._load_error = f"checkpoint missing: {path}"
+
+            model_ref = self.model_path
+            local_path = Path(model_ref)
+            is_local = local_path.exists()
+            # Allow Hugging Face Hub IDs like "user/repo" when no local path exists.
+            is_hub_id = (not is_local) and ("/" in model_ref) and not model_ref.startswith(".")
+            if not is_local and not is_hub_id:
+                self._load_error = f"checkpoint missing: {model_ref}"
                 _log.warning("gcb_not_loaded", error=self._load_error)
                 return False
+
             try:
                 import torch
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-                self._tokenizer = AutoTokenizer.from_pretrained(str(path))
-                self._model = AutoModelForSequenceClassification.from_pretrained(str(path))
+                load_from = str(local_path) if is_local else model_ref
+                self._tokenizer = AutoTokenizer.from_pretrained(load_from)
+                self._model = AutoModelForSequenceClassification.from_pretrained(load_from)
                 self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 self._model.to(self._device)
                 self._model.eval()
 
-                # Prefer checkpoint label map, else model config
-                label_map_path = path / "label_map.json"
-                if label_map_path.exists():
+                # Prefer local checkpoint label map, else model config / hub files
+                label_map_path = local_path / "label_map.json" if is_local else None
+                if label_map_path is not None and label_map_path.exists():
                     import json
 
                     with open(label_map_path) as f:
@@ -119,16 +132,32 @@ class GraphCodeBERTDetector:
                     }
                     self._id2label = {int(k): v for k, v in raw.items()}
                 else:
-                    cfg = getattr(self._model, "config", None)
-                    if cfg and getattr(cfg, "id2label", None):
-                        self._id2label = {int(k): v for k, v in cfg.id2label.items()}
-                    else:
-                        from training.dataset import VULN_ID2LABEL
+                    # Try downloading label_map.json from the Hub when using a remote ID
+                    if is_hub_id:
+                        try:
+                            import json
+                            from huggingface_hub import hf_hub_download
 
-                        self._id2label = dict(VULN_ID2LABEL)
+                            lm_file = hf_hub_download(repo_id=model_ref, filename="label_map.json")
+                            with open(lm_file) as f:
+                                lm = json.load(f)
+                            raw = lm.get("id2label") or {
+                                str(i): lab for i, lab in enumerate(lm.get("labels", []))
+                            }
+                            self._id2label = {int(k): v for k, v in raw.items()}
+                        except Exception:
+                            self._id2label = {}
+                    if not self._id2label:
+                        cfg = getattr(self._model, "config", None)
+                        if cfg and getattr(cfg, "id2label", None):
+                            self._id2label = {int(k): v for k, v in cfg.id2label.items()}
+                        else:
+                            from training.dataset import VULN_ID2LABEL
+
+                            self._id2label = dict(VULN_ID2LABEL)
 
                 self._load_error = None
-                _log.info("gcb_loaded", path=str(path), device=str(self._device))
+                _log.info("gcb_loaded", path=load_from, device=str(self._device))
                 return True
             except Exception as exc:
                 self._model = None
