@@ -12,6 +12,7 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from agents.base import BaseAgent, Finding, LLMClient, get_logger
+from agents.graphcodebert import scan_with_graphcodebert
 
 _log = get_logger("agents.scanner")
 
@@ -54,12 +55,13 @@ class ScannerAgent(BaseAgent):
 
     Workflow:
     1. Run Slither for known vulnerability patterns (fast, deterministic)
-    2. Run LLM scan for subtle logic bugs Slither might miss
-    3. Merge and dedupe findings
+    2. Run Graph CodeBERT (fine-tuned) when checkpoint is available
+    3. Run LLM scan for subtle logic bugs Slither might miss
+    4. Merge and dedupe findings
     """
 
     name = "scanner"
-    description = "Fast vulnerability scanner using Slither + LLM"
+    description = "Fast vulnerability scanner using Slither + Graph CodeBERT + LLM"
 
     def __init__(self, llm_client: Optional[LLMClient] = None, slither_path: str = "slither") -> None:
         super().__init__(llm_client)
@@ -68,13 +70,13 @@ class ScannerAgent(BaseAgent):
     async def process(
         self, source_code: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Finding]:
-        """Run hybrid scan: Slither + LLM."""
+        """Run hybrid scan: Slither + Graph CodeBERT + LLM."""
         context = context or {}
 
         _log.info("scanner_start", source_lines=len(source_code.split("\n")))
 
-        # Run both in parallel for speed
         slither_task = asyncio.create_task(self._run_slither(source_code))
+        gcb_task = asyncio.create_task(asyncio.to_thread(scan_with_graphcodebert, source_code))
         llm_task = asyncio.create_task(self._llm_scan(source_code))
 
         try:
@@ -84,21 +86,27 @@ class ScannerAgent(BaseAgent):
             slither_findings = []
 
         try:
+            gcb_findings = await gcb_task
+        except Exception as exc:
+            _log.warning("gcb_scan_error", error=str(exc))
+            gcb_findings = []
+
+        try:
             llm_findings = await llm_task
         except Exception as exc:
             _log.warning("llm_scan_error", error=str(exc))
             llm_findings = []
 
-        # Merge findings
-        merged = self._merge_findings(slither_findings, llm_findings)
+        merged = self._merge_findings(slither_findings, gcb_findings, llm_findings)
 
-        # Mark source
         for f in merged:
-            f.source = "scanner"
+            if f.source in ("unknown", ""):
+                f.source = "scanner"
 
         _log.info(
             "scanner_done",
             slither=len(slither_findings),
+            graphcodebert=len(gcb_findings),
             llm=len(llm_findings),
             merged=len(merged),
         )
@@ -212,23 +220,26 @@ class ScannerAgent(BaseAgent):
             _log.warning("llm_scan_parse_error", error=str(exc))
             return []
 
-    def _merge_findings(
-        self, slither_findings: List[Finding], llm_findings: List[Finding]
-    ) -> List[Finding]:
+    def _merge_findings(self, *finding_lists: List[Finding]) -> List[Finding]:
         """Merge and deduplicate findings from multiple sources."""
         seen: set = set()
         merged: List[Finding] = []
 
-        for finding in slither_findings + llm_findings:
-            line_range = range(
-                max(1, (finding.line_number or 0) - 3),
-                (finding.line_number or 0) + 3,
-            )
-            key = (finding.issue_type.lower(), tuple(line_range))
+        for findings in finding_lists:
+            for finding in findings:
+                # Contract-level GCB preds have no line — key on type only
+                if finding.line_number is None:
+                    key = (finding.issue_type.lower(), None)
+                else:
+                    line_range = range(
+                        max(1, finding.line_number - 3),
+                        finding.line_number + 3,
+                    )
+                    key = (finding.issue_type.lower(), tuple(line_range))
 
-            if key not in seen:
-                seen.add(key)
-                merged.append(finding)
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(finding)
 
         return merged
 

@@ -11,6 +11,7 @@ Merges with existing SolidityGuard data (data/manifest.json).
 Usage:
     python training/download_data.py --output training/data
     python training/download_data.py --output training/data --skip-wild  # faster, curated only
+    python training/download_data.py --output training/data --wild-only --wild-limit 5000
 
 Output:
     training/data/
@@ -468,6 +469,11 @@ def main() -> None:
     parser.add_argument("--output", default="training/data", help="Output directory")
     parser.add_argument("--manifest", default="data/manifest.json", help="SolidityGuard manifest path")
     parser.add_argument("--skip-wild", action="store_true", help="Skip SmartBugs-Wild (faster)")
+    parser.add_argument(
+        "--wild-only",
+        action="store_true",
+        help="Only SmartBugs-Wild (skip Curated + SolidityGuard)",
+    )
     parser.add_argument("--wild-limit", type=int, default=5000, help="Max wild contracts to process")
     args = parser.parse_args()
 
@@ -478,27 +484,39 @@ def main() -> None:
     print("SmartBugs Dataset Downloader")
     print("=" * 60)
 
-    # 1. SolidityGuard (already in repo)
-    print("\n[0/3] Loading SolidityGuard data...")
-    solidityguard = load_solidityguard(args.manifest)
-
-    # 2. SmartBugs Curated
-    download_smartbugs_curated(output_dir)
-    curated = parse_smartbugs_curated(output_dir / "_smartbugs_curated")
-
-    # 3. SmartBugs Wild
+    solidityguard: List[Dict[str, Any]] = []
+    curated: List[Dict[str, Any]] = []
     wild: List[Dict[str, Any]] = []
-    if not args.skip_wild:
+
+    if args.wild_only:
+        print("\n[mode] wild-only — skipping SolidityGuard + Curated")
+        if args.skip_wild:
+            raise SystemExit("--wild-only cannot be combined with --skip-wild")
         download_smartbugs_wild(output_dir)
         wild = parse_smartbugs_wild(
             output_dir / "_smartbugs_wild",
             output_dir / "_smartbugs_results",
             max_samples=args.wild_limit,
         )
+    else:
+        # 1. SolidityGuard (already in repo)
+        print("\n[0/3] Loading SolidityGuard data...")
+        solidityguard = load_solidityguard(args.manifest)
 
-    # Merge and save
+        # 2. SmartBugs Curated
+        download_smartbugs_curated(output_dir)
+        curated = parse_smartbugs_curated(output_dir / "_smartbugs_curated")
+
+        # 3. SmartBugs Wild
+        if not args.skip_wild:
+            download_smartbugs_wild(output_dir)
+            wild = parse_smartbugs_wild(
+                output_dir / "_smartbugs_wild",
+                output_dir / "_smartbugs_results",
+                max_samples=args.wild_limit,
+            )
+
     merge_datasets(solidityguard, curated, wild, output_dir)
-
     print("\nDone! Dataset ready for training.")
 
 

@@ -1,20 +1,20 @@
 # Graph CodeBERT Fine-Tuning Config
-# Optimized for SmartBugs + SolidityGuard combined dataset on H100
+# Default: SmartBugs-Wild only (see training/run.sh --wild-only)
 
 # Model
 model_name: "microsoft/graphcodebert-base"
 max_length: 512
 
-# Data
+# Data (train.py prefers training/data/combined.json when present)
 manifest_path: "data/manifest.json"
 augment: true
 train_ratio: 0.7
 val_ratio: 0.15
 seed: 42
 
-# Training - H100 optimized for larger dataset
+# Training - H100 optimized for ~5k wild samples
 epochs: 20
-batch_size: 32          # H100 80GB — large batch for stability
+batch_size: 32
 gradient_accumulation_steps: 1
 learning_rate: 2e-5
 weight_decay: 0.01

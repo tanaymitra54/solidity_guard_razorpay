@@ -47,6 +47,7 @@ env/
 # Training artifacts
 training/cache/
 training/checkpoints/
+training/data/
 *.safetensors
 *.bin
 *.pt

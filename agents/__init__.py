@@ -11,6 +11,7 @@ from agents.analyzer import AnalyzerAgent
 from agents.exploit_gen import ExploitGenerator
 from agents.fix_suggester import FixSuggester
 from agents.orchestrator import AgentOrchestrator
+from agents.graphcodebert import GraphCodeBERTDetector, get_detector, gcb_status
 
 __all__ = [
     "BaseAgent",
@@ -22,4 +23,7 @@ __all__ = [
     "ExploitGenerator",
     "FixSuggester",
     "AgentOrchestrator",
+    "GraphCodeBERTDetector",
+    "get_detector",
+    "gcb_status",
 ]
