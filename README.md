@@ -11,120 +11,312 @@ short_description: Solidity smart contract security review environment
 
 # SolidityGuard
 
-SolidityGuard is an OpenEnv RL environment that trains AI agents to review Solidity smart contracts for security vulnerabilities, gas optimizations, and best practices. It provides a multi-agent audit pipeline, structured reward scoring, and a dataset of real-world Solidity samples.
+**OpenEnv RL environment + multi-agent auditor for Solidity smart contracts.**
 
-## Architecture
+SolidityGuard trains and evaluates AI agents that review Solidity for security vulnerabilities, gas optimizations, and best practices. It combines static analysis (Slither / patterns), a fine-tuned **Graph CodeBERT** classifier, and LLM agents that propose exploits and fixes — all behind an OpenEnv-compatible API with structured rewards.
+
+| Resource | Link |
+|----------|------|
+| **GitHub** | [tanaymitra54/solidity_guard_razorpay](https://github.com/tanaymitra54/solidity_guard_razorpay) |
+| **Fine-tuned model (HF)** | [`tanaymitra01/graphcodebert-vulnerability-detector`](https://huggingface.co/tanaymitra01/graphcodebert-vulnerability-detector) |
+| **Base model** | [`microsoft/graphcodebert-base`](https://huggingface.co/microsoft/graphcodebert-base) |
+| **License** | MIT |
+
+---
+
+## Table of contents
+
+- [System architecture](#system-architecture)
+- [Audit pipeline](#audit-pipeline)
+- [OpenEnv RL loop](#openenv-rl-loop)
+- [What the project does](#what-the-project-does)
+- [Competitive comparison](#competitive-comparison)
+- [Task taxonomy](#task-taxonomy)
+- [Dataset](#dataset)
+- [Quick start](#quick-start)
+- [API endpoints](#api-endpoints)
+- [Scoring system](#scoring-system)
+- [Graph CodeBERT fine-tuning](#graph-codebert-fine-tuning)
+- [Environment variables](#environment-variables)
+- [File structure](#file-structure)
+- [Deployment](#deployment)
+- [Notes](#notes)
+
+---
+
+## System architecture
+
+High-level view of clients, API, OpenEnv core, agents, and data.
+
+```mermaid
+flowchart TB
+    subgraph Clients
+        AG[RL Agent / Script]
+        UI[Browser / Demo]
+        INF[inference.py]
+    end
+
+    subgraph API["FastAPI — server/app.py :7860"]
+        H["/health /dashboard"]
+        R["/reset /step /state"]
+        AU["/audit /report"]
+    end
+
+    subgraph Core["OpenEnv core"]
+        ENV[environment.py]
+        GR[graders.py]
+    end
+
+    subgraph Agents["Multi-agent pipeline"]
+        ORCH[Orchestrator]
+        SC[Scanner]
+        AN[Analyzer]
+        EX[ExploitGen]
+        FX[FixSuggester]
+        GCB[Graph CodeBERT]
+    end
+
+    subgraph Data
+        MAN[data/manifest.json]
+        SAMP[data/samples/**]
+        CKPT["HF Hub or training/checkpoints/best"]
+    end
+
+    AG --> R
+    UI --> H
+    UI --> AU
+    INF --> AU
+    R --> ENV
+    AU --> ORCH
+    ENV --> GR
+    ENV --> MAN
+    ENV --> SAMP
+    ORCH --> SC
+    ORCH --> AN
+    ORCH --> EX
+    ORCH --> FX
+    SC --> GCB
+    GCB --> CKPT
+```
+
+---
+
+## Audit pipeline
+
+How a single contract moves through detectors and LLM agents.
 
 ```mermaid
 flowchart LR
-  subgraph Client
-    A[Agent or Script]
-  end
-  subgraph API
-    B[FastAPI app.py]
-  end
-  subgraph Core
-    C[environment.py]
-    D[graders.py]
-  end
-  subgraph Agents
-    E[Scanner]
-    F[Analyzer]
-    G[ExploitGen]
-    H[FixSuggester]
-    I[Orchestrator]
-  end
-  subgraph Data
-    J[data/samples]
-    K[data/manifest.json]
-  end
-
-  A <-->|/reset /step /state /audit| B
-  B --> C
-  C --> D
-  C --> J
-  C --> K
-  D --> B
-  B --> I
-  I --> E
-  I --> F
-  I --> G
-  I --> H
+    SOL[Solidity source] --> SC[Scanner<br/>patterns + Slither]
+    SOL --> GCB[Graph CodeBERT<br/>12-class classifier]
+    SC --> MERGE[Merge findings]
+    GCB --> MERGE
+    MERGE --> AN[Analyzer<br/>LLM deep pass]
+    AN --> EX[ExploitGen<br/>Foundry PoCs]
+    AN --> FX[FixSuggester<br/>patches]
+    EX --> OUT[AuditResult]
+    FX --> OUT
+    AN --> OUT
+    MERGE --> OUT
 ```
+
+### Sequence (request lifecycle)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as FastAPI
+    participant O as Orchestrator
+    participant S as Scanner + GCB
+    participant A as Analyzer
+    participant E as Exploit / Fix
+
+    C->>API: POST /audit {source_code}
+    API->>O: analyze(source)
+    O->>S: scan (parallel)
+    S-->>O: findings
+    O->>A: deep analysis
+    A-->>O: verified findings
+    par Critical path
+        O->>E: generate exploits
+        O->>E: generate fixes
+    end
+    E-->>O: PoCs + patches
+    O-->>API: AuditResult + metrics
+    API-->>C: JSON response
+```
+
+---
+
+## OpenEnv RL loop
+
+Agents interact through reset / step / reward for training and evaluation.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Loaded: POST /reset (task_id)
+    Loaded --> Scored: POST /step (findings[])
+    Scored --> Loaded: next episode /reset
+    Scored --> Idle: session end
+
+    note right of Loaded
+      Observation:
+      source_code, metadata, task_id
+    end note
+
+    note right of Scored
+      Reward in [0, 1]
+      from graders.py
+    end note
+```
+
+```mermaid
+flowchart TD
+    OBS["Observation<br/>source + metadata + task_id"] --> ACT["Action<br/>list of findings"]
+    ACT --> GRADE["graders.py<br/>5-component score"]
+    GRADE --> REW["Reward ∈ [0.0, 1.0]"]
+    REW --> POLICY["RL policy update<br/>(external trainer)"]
+    POLICY --> OBS
+```
+
+---
 
 ## What the project does
 
-- **Multi-Agent Pipeline**: Scanner (pattern matching + Slither) → Analyzer (LLM deep analysis) → ExploitGen (Foundry PoC exploits) → FixSuggester (targeted patches)
-- **4 Difficulty Tiers**: Best practices (easy) → Gas optimization (medium) → Security (hard) → Comprehensive audit (hard)
-- **Advanced Scoring**: 5-component reward function (base match, line accuracy, exploit explanation, fix quality, confidence calibration)
-- **21 Real-World Samples**: Solidity contracts covering 15+ vulnerability types across 4 tiers
-- **Structured Logging**: JSON-formatted logs with request IDs for full pipeline traceability
+- **Multi-agent pipeline** — Scanner (patterns + Slither + Graph CodeBERT) → Analyzer → ExploitGen → FixSuggester  
+- **4 difficulty tiers** — Best practices → Gas → Security → Comprehensive audit  
+- **Structured rewards** — 5-component grader for stable RL signals  
+- **21 labeled samples** — Real Solidity contracts across 15+ issue types  
+- **Graph CodeBERT** — Fine-tuned classifier hosted on Hugging Face for first-pass detection  
+- **OpenEnv + Docker** — Spec-compliant environment, HF Spaces–ready  
+- **Structured JSON logs** — Request IDs across the full pipeline  
 
-## Competitive Comparison
+---
+
+## Competitive comparison
 
 | Feature | SolidityGuard | Slither | Mythril | MythX | Securify2 |
 |---------|:---:|:---:|:---:|:---:|:---:|
-| **Multi-Agent Architecture** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **LLM-Powered Analysis** | ✅ | ❌ | ❌ | ✅ | ❌ |
-| **Auto-Generated Exploit PoCs** | ✅ Foundry tests | ❌ | ❌ | ❌ | ❌ |
-| **Auto-Fix Suggestions** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Gas Optimization Detection** | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Security Vulnerability Detection** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Best Practices Detection** | ✅ | ✅ | ❌ | ✅ | ❌ |
-| **RL Training Environment** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **OpenEnv Spec Compliant** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Self-Hosted / No API Cost** | ✅ | ✅ | ✅ | ❌ | ✅ |
-| **Open Source** | ✅ MIT | ✅ | ✅ | ❌ | ✅ |
-| **Audit Cost** | Free | Free | Free | $50-500/mo | Free |
+| Multi-agent architecture | ✅ | ❌ | ❌ | ❌ | ❌ |
+| LLM-powered analysis | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Fine-tuned code LM (Graph CodeBERT) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Auto-generated exploit PoCs | ✅ Foundry | ❌ | ❌ | ❌ | ❌ |
+| Auto-fix suggestions | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Gas optimization detection | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Security vulnerability detection | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Best-practices detection | ✅ | ✅ | ❌ | ✅ | ❌ |
+| RL training environment | ✅ | ❌ | ❌ | ❌ | ❌ |
+| OpenEnv spec compliant | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Self-hosted / open source | ✅ MIT | ✅ | ✅ | ❌ | ✅ |
 
-## Task Taxonomy
+---
 
-| Task | Difficulty | Focus | Samples | Issue Types |
+## Task taxonomy
+
+| Task | Difficulty | Focus | Samples | Issue types |
 |------|:---:|-------|:---:|-------------|
-| Task 1 | Easy | Best Practices & Syntax | 6 | SPDX, NatSpec, compiler version, deprecated patterns |
-| Task 2 | Medium | Gas Optimization | 6 | Unbounded loops, storage reads, struct packing, custom errors |
-| Task 3 | Hard | Security Vulnerabilities | 6 | Reentrancy, access control, tx.origin, delegatecall, randomness |
-| Task 4 | Hard | Comprehensive Audit | 3 | Cross-category: combines best practices + gas + security issues |
+| Task 1 | Easy | Best practices & syntax | 6 | SPDX, NatSpec, compiler version, deprecated patterns |
+| Task 2 | Medium | Gas optimization | 6 | Unbounded loops, storage reads, packing, custom errors |
+| Task 3 | Hard | Security | 6 | Reentrancy, access control, `tx.origin`, delegatecall, randomness |
+| Task 4 | Hard | Comprehensive audit | 3 | Cross-category mix |
 
-## Dataset Statistics
+```mermaid
+mindmap
+  root((SolidityGuard tasks))
+    Task1 Easy
+      SPDX
+      NatSpec
+      Pragma
+      Deprecated patterns
+    Task2 Medium
+      Loops
+      Storage
+      Packing
+      Custom errors
+    Task3 Hard
+      Reentrancy
+      Access control
+      tx.origin
+      Delegatecall
+      Weak randomness
+    Task4 Hard
+      Mixed findings
+      Full audit report
+```
+
+---
+
+## Dataset
+
+### Hackathon / OpenEnv samples (in-repo)
 
 ```
-Total Samples:  21
-Total Issues:   49
-Severity Distribution:
-  Critical:     18 (36.7%)
-  Medium:       13 (26.5%)
-  Low:          18 (36.7%)
-
-Task Breakdown:
-  task_1_best_practices:    6 samples, 14 issues
-  task_2_gas_optimization:  6 samples,  9 issues
-  task_3_security:          6 samples,  9 issues
-  task_4_comprehensive:     3 samples, 17 issues
+Total samples:  21
+Total issues:   49
+Severity:
+  Critical: 18 (36.7%)
+  Medium:   13 (26.5%)
+  Low:      18 (36.7%)
 ```
 
-## Quick Start
+### Graph CodeBERT training data (SmartBugs-Wild)
+
+| Item | Value |
+|------|-------|
+| Source | SmartBugs-Wild + tool consensus labels |
+| Cap (default) | 5,000 contracts (`WILD_LIMIT`) |
+| Split | 70% train / 15% val / 15% test |
+| Held-out accuracy | ~0.56 |
+| Held-out macro-F1 | ~0.47 |
+
+```mermaid
+flowchart TD
+    W[SmartBugs-Wild ~47k .sol] --> CAP[Cap WILD_LIMIT=5000]
+    META[results_wild.json<br/>9 tools] --> VOTE[Category votes ≥ 2]
+    CAP --> MERGE[Labeled combined.json]
+    VOTE --> MERGE
+    MERGE --> SPLIT[train / val / test]
+    SPLIT --> FT[Fine-tune Graph CodeBERT]
+    FT --> HUB[HF Hub + Git LFS checkpoint]
+```
+
+---
+
+## Quick start
 
 ### Requirements
-- Python 3.11+
-- `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN` environment variables (for LLM inference)
+
+- Python 3.11+ (3.12 OK with a venv)
+- Optional GPU for training / faster GCB inference  
+- For LLM features: `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN`
 
 ### Install
+
 ```bash
+git clone https://github.com/tanaymitra54/solidity_guard_razorpay.git
+cd solidity_guard_razorpay
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run API Server
+### Run API server
+
 ```bash
+export GRAPHCODEBERT_PATH=tanaymitra01/graphcodebert-vulnerability-detector
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
-### Run Inference
+Open `http://localhost:7860` (landing) or `/demo`.
+
+### Run inference script
+
 ```bash
 python inference.py
 ```
 
-### Run Multi-Agent Audit (No LLM Required)
+### Multi-agent audit without LLM
+
 ```python
 from multi_agent import MultiAgentSystem
 
@@ -135,38 +327,68 @@ for f in findings:
     print(f"{f['issue_type']} (risk={f['risk_score']})")
 ```
 
-## API Endpoints
+### Load Graph CodeBERT from the Hub
+
+```python
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
+
+repo = "tanaymitra01/graphcodebert-vulnerability-detector"
+tok = AutoTokenizer.from_pretrained(repo)
+model = AutoModelForSequenceClassification.from_pretrained(repo)
+model.eval()
+```
+
+---
+
+## API endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/health` | System health with uptime and dataset info |
-| POST | `/reset` | Initialize environment with a task |
-| POST | `/step` | Submit findings and receive score |
-| GET | `/state` | Get current environment state |
-| POST | `/report` | Generate comprehensive audit report |
-| POST | `/audit` | Run full multi-agent pipeline on a contract |
-| GET | `/dashboard` | Real-time analytics (computed from dataset) |
-| GET | `/` | Cyberpunk landing page |
-| GET | `/demo` | Interactive live demo |
+| GET | `/` | Landing page |
+| GET | `/demo` | Interactive demo |
+| GET | `/health` | Health, uptime, dataset info |
+| GET | `/dashboard` | Analytics from dataset |
+| GET | `/state` | Current environment state |
+| POST | `/reset` | Start episode with a task |
+| POST | `/step` | Submit findings → reward |
+| POST | `/audit` | Full multi-agent pipeline |
+| POST | `/report` | Comprehensive audit report |
 
-## Scoring System
+---
 
-The 5-component reward function:
+## Scoring system
 
-| Component | Weight | Max Bonus | Description |
-|-----------|:---:|:---:|-------------|
-| Base Score | 60% | 0.6 | Matched findings / expected findings |
-| Line Accuracy | — | +0.2 | Bonus for exact or near-exact line numbers |
-| Exploit Explanation | — | +0.15 | Bonus for detailed attack scenarios (50+ chars) |
-| Fix Suggestion | — | +0.15 | Bonus for actionable fix recommendations (20+ chars) |
-| Confidence Calibration | — | +0.1 | Bonus for appropriate confidence levels |
-| False Positive Penalty | — | -0.05 each | Deduction for each unmatched finding |
+```mermaid
+flowchart LR
+    F[Submitted findings] --> B[Base match 60%]
+    F --> L[Line accuracy +0.2]
+    F --> E[Exploit text +0.15]
+    F --> X[Fix text +0.15]
+    F --> C[Confidence +0.1]
+    F --> P[FP penalty -0.05 each]
+    B --> S[Sum → clamp 0..1]
+    L --> S
+    E --> S
+    X --> S
+    C --> S
+    P --> S
+```
 
-All scores are clamped to [0.0, 1.0] for stable RL reward signals.
+| Component | Weight / bonus | Description |
+|-----------|:---:|-------------|
+| Base score | 60% (max 0.6) | Matched / expected findings |
+| Line accuracy | +0.2 | Exact or near-exact lines |
+| Exploit explanation | +0.15 | Detailed attack scenario |
+| Fix suggestion | +0.15 | Actionable patch text |
+| Confidence calibration | +0.1 | Sensible confidence values |
+| False-positive penalty | −0.05 each | Unmatched extras |
 
-## Structured Logging
+All rewards are clamped to **[0.0, 1.0]** for stable RL.
 
-All agents emit JSON-formatted logs with request tracing:
+---
+
+## Structured logging
 
 ```json
 {"event": "pipeline_start", "request_id": "a1b2c3d4e5f6", "task_id": "task_3_security", "source_lines": 42}
@@ -175,159 +397,180 @@ All agents emit JSON-formatted logs with request tracing:
 {"event": "pipeline_done", "request_id": "a1b2c3d4e5f6", "total_findings": 3, "critical": 1, "elapsed": 4.2}
 ```
 
-## Graph CodeBERT Fine-Tuning
+---
 
-SolidityGuard includes a complete fine-tuning pipeline for Microsoft Graph CodeBERT on the Solidity vulnerability detection task.
+## Graph CodeBERT fine-tuning
 
-### One-Command Launch (H100 Server)
+### One-command train (GPU recommended)
 
 ```bash
-git clone https://github.com/tanaymitra54/solidity_guard_razorpay.git
-cd solidity_guard_razorpay
 bash training/run.sh
+# optional: WILD_LIMIT=1000 bash training/run.sh
 ```
 
-This will:
-1. Install dependencies (PyTorch, Transformers, etc.)
-2. Download **SmartBugs-Wild only** (default limit 5000; override with `WILD_LIMIT=...`)
-3. Prepare train/val/test splits
-4. Pull `microsoft/graphcodebert-base` from HuggingFace (~500MB)
-5. Fine-tune for 20 epochs with early stopping
-6. Evaluate on the held-out wild test split
+```mermaid
+flowchart TD
+    A[run.sh] --> B[Create / use .venv]
+    B --> C[pip install torch transformers ...]
+    C --> D[download_data.py --wild-only]
+    D --> E[dataset.py splits + augment]
+    E --> F[train.py + config.yaml]
+    F --> G[Early stop on val macro-F1]
+    G --> H[checkpoints/best]
+    H --> I[test_results.json]
+```
 
-After training, copy `training/checkpoints/best/` to the serving host and set `GRAPHCODEBERT_PATH`, or point at the Hub model:
+### Model head
+
+```mermaid
+flowchart LR
+    SRC[Solidity text] --> TOK[Tokenizer 512]
+    TOK --> ENC[Graph CodeBERT encoder]
+    ENC --> CLS["[CLS] 768-d"]
+    CLS --> LIN[Linear → 12 logits]
+    LIN --> SM[Softmax]
+    SM --> OUT[label + confidence]
+```
+
+**Classes:** `safe`, `reentrancy`, `access_control`, `tx_origin_auth`, `integer_overflow`, `unsafe_delegatecall`, `weak_randomness`, `unbounded_loop`, `redundant_storage`, `gas_optimization`, `best_practice`, `other`
+
+### Use the published checkpoint
 
 ```bash
+# Hugging Face (anywhere)
 export GRAPHCODEBERT_PATH=tanaymitra01/graphcodebert-vulnerability-detector
+
+# Or local / Git LFS checkout
+export GRAPHCODEBERT_PATH=training/checkpoints/best
 ```
 
-The scanner uses it as a first-pass detector (Slither + Graph CodeBERT + LLM).
-### Manual Steps
+### Manual steps
 
 ```bash
-# Prepare dataset
-python training/dataset.py --manifest data/manifest.json --augment --output training/cache
-
-# Fine-tune (downloads model on first run)
+python training/download_data.py --output training/data --wild-only --wild-limit 5000
+python training/dataset.py --combined training/data/combined.json --augment --output training/cache
 python training/train.py --config training/config.yaml
-
-# Evaluate
 python training/evaluate.py --model training/checkpoints/best --split test
 ```
 
-### Training Config (`training/config.yaml`)
+### Training config (`training/config.yaml`)
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `model_name` | `microsoft/graphcodebert-base` | HuggingFace model ID |
-| `epochs` | 20 | Training epochs |
-| `batch_size` | 16 | Batch size (H100: can go to 32) |
-| `learning_rate` | 2e-5 | AdamW learning rate |
-| `max_length` | 512 | Max token length |
-| `early_stopping_patience` | 5 | Stop if no improvement for N epochs |
+| `model_name` | `microsoft/graphcodebert-base` | Base HF model |
+| `epochs` | 20 | Max epochs (early stopping) |
+| `batch_size` | 32 | H100-friendly default |
+| `learning_rate` | `2e-5` | AdamW |
+| `max_length` | 512 | Token limit |
+| `early_stopping_patience` | 5 | Stop if val F1 stalls |
 
-### Model Output
+### Checkpoint layout
 
 ```
 training/checkpoints/
-├── best/              # Best model by val F1
+├── best/                 # Best by val macro-F1 (also on HF + Git LFS)
 │   ├── config.json
 │   ├── model.safetensors
-│   ├── tokenizer.json
-│   └── label_map.json
-├── final/             # Last epoch model
-├── training_history.json
-├── test_results.json
-└── config.json
+│   ├── label_map.json
+│   └── README.md
+└── test_results.json
 ```
 
-### Fine-Tuning Architecture
+---
 
-```
-Input: Solidity source code (max 512 tokens)
-  ↓
-Graph CodeBERT (microsoft/graphcodebert-base)
-  ↓  [CLS] token embedding (768-dim)
-  ↓
-Dropout (0.1)
-  ↓
-Linear (768 → 12 classes)
-  ↓
-Output: vulnerability type prediction
-  ↓
-Classes: safe, reentrancy, access_control, tx_origin_auth,
-         integer_overflow, unsafe_delegatecall, weak_randomness,
-         unbounded_loop, redundant_storage, gas_optimization,
-         best_practice, other
-```
-
-## File Structure
-
-```
-ContractSLM/
-├── server/
-│   └── app.py              # FastAPI endpoints (health, reset, step, audit, dashboard)
-├── agents/
-│   ├── base.py             # BaseAgent, Finding, LLMClient, structured logging
-│   ├── orchestrator.py     # Multi-agent pipeline coordinator
-│   ├── scanner.py          # Pattern matching + Slither + LLM scanning
-│   ├── analyzer.py         # Deep LLM-powered analysis
-│   ├── exploit_gen.py      # Foundry PoC exploit generation
-│   ├── fix_suggester.py    # Targeted fix generation
-│   └── __init__.py
-├── training/
-│   ├── dataset.py          # Dataset prep: manifest → train/val/test splits
-│   ├── train.py            # Graph CodeBERT fine-tuning pipeline
-│   ├── evaluate.py         # Evaluation with metrics + report
-│   ├── config.yaml         # Hyperparameters for H100
-│   ├── run.sh              # One-command launch script
-│   └── __init__.py
-├── environment.py          # OpenEnv core (reset/step/state)
-├── graders.py              # 5-component reward scoring
-├── multi_agent.py          # Static multi-agent system (no LLM)
-├── inference.py            # LLM inference with [START]/[STEP]/[END] logging
-├── openenv.yaml            # OpenEnv spec
-├── requirements.txt        # Dependencies (serving + training)
-├── Dockerfile              # Container config
-├── data/
-│   ├── manifest.json       # 21 samples with labels
-│   └── samples/
-│       ├── task1/          # 6 best practices contracts
-│       ├── task2/          # 6 gas optimization contracts
-│       ├── task3/          # 6 security vulnerability contracts
-│       └── task4/          # 3 comprehensive audit contracts
-└── README.md
-```
-
-## Environment Variables
+## Environment variables
 
 | Variable | Required | Description |
 |----------|:---:|-------------|
-| `API_BASE_URL` | For LLM | LLM API endpoint (default: HF router) |
-| `MODEL_NAME` | For LLM | Model identifier (default: Qwen2.5-72B) |
-| `HF_TOKEN` | For LLM | Hugging Face API key |
-| `LLM_BASE_URL` | Optional | Override LLM endpoint for agents |
-| `LLM_API_KEY` | Optional | Override API key for agents |
-| `GRAPHCODEBERT_PATH` | Optional | Local checkpoint dir or HF Hub ID (default: `training/checkpoints/best`; hosted: `tanaymitra01/graphcodebert-vulnerability-detector`) |
-| `GRAPHCODEBERT_THRESHOLD` | Optional | Min confidence to emit a finding (default: `0.5`) |
+| `API_BASE_URL` | For LLM | LLM API endpoint |
+| `MODEL_NAME` | For LLM | Model id (e.g. Qwen2.5-72B) |
+| `HF_TOKEN` | For LLM / private Hub | Hugging Face token |
+| `LLM_BASE_URL` | Optional | Override agent LLM endpoint |
+| `LLM_API_KEY` | Optional | Override agent API key |
+| `GRAPHCODEBERT_PATH` | Optional | Local dir **or** Hub id (`tanaymitra01/graphcodebert-vulnerability-detector`) |
+| `GRAPHCODEBERT_THRESHOLD` | Optional | Min confidence to emit a finding (default `0.5`) |
+| `WILD_LIMIT` | Optional | Cap wild samples for training (default `5000`) |
+
+---
+
+## File structure
+
+```
+solidity_guard_razorpay/
+├── server/app.py                 # FastAPI: health, reset, step, audit, dashboard
+├── agents/
+│   ├── orchestrator.py           # Pipeline coordinator
+│   ├── scanner.py                # Patterns + Slither + LLM
+│   ├── graphcodebert.py          # Fine-tuned classifier (local or Hub)
+│   ├── analyzer.py
+│   ├── exploit_gen.py
+│   ├── fix_suggester.py
+│   └── base.py                   # Finding, LLMClient, logging
+├── training/
+│   ├── run.sh                    # One-shot fine-tune
+│   ├── download_data.py          # SmartBugs download + parse
+│   ├── dataset.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── config.yaml
+│   └── checkpoints/best/         # Published weights (Git LFS)
+├── environment.py                # OpenEnv reset / step / state
+├── graders.py                    # 5-component reward
+├── multi_agent.py                # Static pipeline (no LLM)
+├── inference.py                  # [START]/[STEP]/[END] logging
+├── openenv.yaml
+├── Dockerfile
+├── data/
+│   ├── manifest.json
+│   └── samples/task{1,2,3,4}/
+└── README.md
+```
+
+---
 
 ## Deployment
 
-### Hugging Face Spaces
-1. Create a Space with `sdk: docker`
-2. Link to this GitHub repo
-3. Set environment variables in Space Settings
-4. The server starts on port 7860 automatically
+### Hugging Face Spaces (Docker)
 
-### Local Development
+1. Create a Space with `sdk: docker`  
+2. Connect this GitHub repo  
+3. Set `GRAPHCODEBERT_PATH`, and LLM env vars if needed  
+4. Space serves on port **7860**
+
+```mermaid
+flowchart LR
+    GH[GitHub repo] --> SP[HF Space Docker]
+    HF[Hub model weights] --> SP
+    SP --> PUB[Public URL :7860]
+```
+
+### Local
+
 ```bash
 pip install -r requirements.txt
+export GRAPHCODEBERT_PATH=tanaymitra01/graphcodebert-vulnerability-detector
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
+---
+
 ## Notes
 
-- Runtime: ~150s (target: <20 minutes on 2 vCPU / 8 GB)
-- All scores are clamped to [0.0, 1.0] for RL stability
-- The multi-agent system works without LLM (static analysis mode)
-- Dashboard data is computed in real-time from the dataset (no hardcoded metrics)
+- Inference script target: complete under **20 minutes** on modest CPU  
+- Rewards always clamped to `[0.0, 1.0]`  
+- Multi-agent static path works **without** an LLM  
+- Graph CodeBERT labels come from tool consensus — useful for screening, not a full audit replacement  
+- Large training caches (`training/data/`, `.venv/`) are gitignored; weights live on **Git LFS** and **Hugging Face**
+
+---
+
+## Citation
+
+```bibtex
+@misc{solidityguard2026,
+  title  = {SolidityGuard: OpenEnv RL Environment for Smart Contract Security Review},
+  author = {Tanay Mitra},
+  year   = {2026},
+  url    = {https://github.com/tanaymitra54/solidity_guard_razorpay}
+}
+```
