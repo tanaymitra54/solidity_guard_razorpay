@@ -189,11 +189,13 @@ bash training/run.sh
 
 This will:
 1. Install dependencies (PyTorch, Transformers, etc.)
-2. Prepare the dataset from `data/manifest.json`
-3. Pull `microsoft/graphcodebert-base` from HuggingFace (~500MB)
-4. Fine-tune for 20 epochs with early stopping
-5. Evaluate on test set and report F1/accuracy
+2. Download **SmartBugs-Wild only** (default limit 5000; override with `WILD_LIMIT=...`)
+3. Prepare train/val/test splits
+4. Pull `microsoft/graphcodebert-base` from HuggingFace (~500MB)
+5. Fine-tune for 20 epochs with early stopping
+6. Evaluate on the held-out wild test split
 
+After training, copy `training/checkpoints/best/` to the serving host and set `GRAPHCODEBERT_PATH`. The scanner uses it as a first-pass detector (Slither + Graph CodeBERT + LLM).
 ### Manual Steps
 
 ```bash
@@ -300,6 +302,8 @@ ContractSLM/
 | `HF_TOKEN` | For LLM | Hugging Face API key |
 | `LLM_BASE_URL` | Optional | Override LLM endpoint for agents |
 | `LLM_API_KEY` | Optional | Override API key for agents |
+| `GRAPHCODEBERT_PATH` | Optional | Fine-tuned checkpoint dir (default: `training/checkpoints/best`) |
+| `GRAPHCODEBERT_THRESHOLD` | Optional | Min confidence to emit a finding (default: `0.5`) |
 
 ## Deployment
 

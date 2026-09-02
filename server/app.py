@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from environment import SolidityGuardEnv
 from agents.orchestrator import AgentOrchestrator, analyze_contract
 from agents.base import LLMClient, get_logger
+from agents.graphcodebert import gcb_status
 
 _log = get_logger("server.app")
 
@@ -479,11 +480,15 @@ def root() -> str:
 def health() -> Dict[str, Any]:
     """Health check endpoint with real system info."""
     uptime = round(time.time() - _start_time, 1)
+    gcb = gcb_status()
+    if gcb.get("warning"):
+        _log.warning("gcb_health_warning", warning=gcb["warning"], path=gcb.get("path"))
     return {
         "status": "ok",
         "uptime_seconds": uptime,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dataset_samples": len(env._manifest),
+        "graphcodebert": gcb,
     }
 
 

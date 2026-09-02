@@ -64,24 +64,36 @@ SEVERITY_LABEL2ID: Dict[str, int] = {s: i for i, s in enumerate(SEVERITY_LABELS)
 
 _LABEL_CANONICAL: Dict[str, str] = {
     "reentrancy": "reentrancy",
+    "access_control": "access_control",
     "missing_access_control": "access_control",
     "tx_origin_auth": "tx_origin_auth",
+    "integer_overflow": "integer_overflow",
     "integer_overflow_risk": "integer_overflow",
     "unsafe_delegatecall": "unsafe_delegatecall",
     "weak_randomness": "weak_randomness",
     "unbounded_loop": "gas_optimization",
+    "redundant_storage": "gas_optimization",
     "redundant_storage_read": "gas_optimization",
     "custom_error_missing": "gas_optimization",
     "poor_struct_packing": "gas_optimization",
     "unchecked_math_opportunity": "gas_optimization",
     "expensive_operation_in_loop": "gas_optimization",
     "inefficient_string_concat": "gas_optimization",
+    "gas_optimization": "gas_optimization",
+    "best_practice": "best_practice",
     "missing_spdx": "best_practice",
     "old_compiler_version": "best_practice",
     "missing_natspec": "best_practice",
     "deprecated_constructor": "best_practice",
     "missing_events": "best_practice",
     "unused_variables": "best_practice",
+    # SmartBugs-Wild consensus categories -> our label set
+    "denial_of_service": "other",
+    "front_running": "other",
+    "time_manipulation": "other",
+    "unchecked_return_value": "other",
+    "safe": "safe",
+    "other": "other",
 }
 
 
@@ -227,8 +239,8 @@ class VulnerabilityClassificationDataset(Dataset):
             return_tensors="pt",
         )
 
-        # Primary vulnerability label
-        label = VULN_LABEL2ID[sample.primary_vuln]
+        # Primary vulnerability label (unknown wild labels -> other)
+        label = VULN_LABEL2ID.get(canonicalize_label(sample.primary_vuln), VULN_LABEL2ID["other"])
 
         return {
             "input_ids": encoding["input_ids"].squeeze(0),
