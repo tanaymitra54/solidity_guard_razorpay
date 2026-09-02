@@ -95,7 +95,7 @@ def sparse_checkout(repo_url: str, target: str, sparse_path: str) -> None:
     sparse_file = Path(target) / ".git" / "info" / "sparse-checkout"
     sparse_file.write_text(f"{sparse_path}\n")
     subprocess.run(
-        ["git", "pull", "--depth=1", "origin", "main"],
+        ["git", "pull", "--depth=1", "origin", "master"],
         cwd=target, check=True, capture_output=True,
     )
 
@@ -206,7 +206,8 @@ def parse_smartbugs_wild(wild_dir: Path, results_dir: Path, max_samples: int = 5
     """
     Parse SmartBugs-Wild with tool-detected vulnerabilities.
 
-    Uses consensus voting: a contract is labeled vulnerable if ≥3 of 9 tools agree.
+    Uses pre-aggregated metadata/results_wild.json (ICSE 2020 wild set).
+    Consensus: label a category if ≥2 tools report it.
     """
     print("\n[3/3] Parsing SmartBugs-Wild...")
 
@@ -215,72 +216,93 @@ def parse_smartbugs_wild(wild_dir: Path, results_dir: Path, max_samples: int = 5
         print(f"  [WARN] {contracts_dir} not found, skipping wild")
         return []
 
-    # Build a map of which tools detected what per contract
-    tool_results: Dict[str, Dict[str, List[str]]] = {}  # address -> tool -> [categories]
+    # Prefer compact metadata (categories already mapped). Raw layout is
+    # results/<tool>/icse20/<address>/ — not results/<tool>/wild/.
+    meta_path = results_dir / "metadata" / "results_wild.json"
+    tool_results: Dict[str, Dict[str, List[str]]] = {}
 
-    results_base = results_dir / "results"
-    if results_base.exists():
-        for tool_dir in results_base.iterdir():
-            if not tool_dir.is_dir():
-                continue
-            tool_name = tool_dir.name
-            wild_results = tool_dir / "wild"
-            if not wild_results.exists():
-                continue
-
-            for contract_dir in wild_results.iterdir():
-                if not contract_dir.is_dir():
+    if meta_path.exists():
+        print(f"  Loading labels from {meta_path}")
+        with open(meta_path) as f:
+            wild_meta = json.load(f)
+        for address, entry in wild_meta.items():
+            addr = address.lower()
+            tools = entry.get("tools", {}) if isinstance(entry, dict) else {}
+            per_tool: Dict[str, List[str]] = {}
+            for tool_name, tool_data in tools.items():
+                if not isinstance(tool_data, dict):
                     continue
-                address = contract_dir.name
-
-                # Look for result JSON files
-                for result_file in contract_dir.glob("*.json"):
-                    try:
-                        with open(result_file) as f:
-                            result_data = json.load(f)
-                        # Extract vulnerability categories from tool output
-                        findings = result_data if isinstance(result_data, list) else result_data.get("results", [])
-                        categories: List[str] = []
-                        if isinstance(findings, list):
-                            for finding in findings:
-                                if isinstance(finding, dict):
-                                    cat = finding.get("category", finding.get("check", ""))
-                                    if cat:
-                                        categories.append(cat.lower())
-                        if address not in tool_results:
-                            tool_results[address] = {}
-                        tool_results[address][tool_name] = categories
-                    except (json.JSONDecodeError, Exception):
+                cats = [
+                    str(c).strip().lower()
+                    for c in (tool_data.get("categories") or {}).keys()
+                    if str(c).strip() and str(c).strip().lower() != "ignore"
+                ]
+                if cats:
+                    per_tool[tool_name] = cats
+            if per_tool:
+                tool_results[addr] = per_tool
+        print(f"  Loaded tool labels for {len(tool_results)} contracts")
+    else:
+        print(f"  [WARN] {meta_path} missing; falling back to results/*/icse20")
+        results_base = results_dir / "results"
+        if results_base.exists():
+            for tool_dir in results_base.iterdir():
+                if not tool_dir.is_dir():
+                    continue
+                tool_name = tool_dir.name
+                for dataset_name in ("icse20", "wild"):
+                    wild_results = tool_dir / dataset_name
+                    if not wild_results.exists():
                         continue
+                    for contract_dir in wild_results.iterdir():
+                        if not contract_dir.is_dir():
+                            continue
+                        address = contract_dir.name.lower()
+                        for result_file in contract_dir.glob("*.json"):
+                            try:
+                                with open(result_file) as f:
+                                    result_data = json.load(f)
+                                analysis = result_data.get("analysis", result_data.get("results", []))
+                                categories: List[str] = []
+                                if isinstance(analysis, list):
+                                    for finding in analysis:
+                                        if isinstance(finding, dict):
+                                            cat = finding.get("category", finding.get("check", ""))
+                                            if cat:
+                                                categories.append(str(cat).lower())
+                                if categories:
+                                    tool_results.setdefault(address, {})[tool_name] = categories
+                            except (json.JSONDecodeError, OSError, TypeError):
+                                continue
 
-    # Process contracts with consensus labels
     samples: List[Dict[str, Any]] = []
-    sol_files = list(contracts_dir.glob("*.sol"))[:max_samples]
+    sol_files = sorted(contracts_dir.glob("*.sol"))
+    scanned = 0
 
     for sol_file in sol_files:
-        address = sol_file.stem
+        if len(samples) >= max_samples:
+            break
+        scanned += 1
+        address = sol_file.stem.lower()
 
         try:
             source_code = sol_file.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except OSError:
             continue
 
         if not source_code.strip() or len(source_code) < 50:
             continue
 
-        # Count tool consensus
         contract_tools = tool_results.get(address, {})
         if not contract_tools:
             continue
 
-        # Aggregate categories across tools
         category_votes: Dict[str, int] = {}
         for tool_cats in contract_tools.values():
-            for cat in tool_cats:
+            for cat in set(tool_cats):
                 normalized = cat.replace(" ", "_").replace("-", "_")
                 category_votes[normalized] = category_votes.get(normalized, 0) + 1
 
-        # Label as vulnerable if ≥2 tools agree
         labels: List[Dict[str, Any]] = []
         categories_seen: Set[str] = set()
         for category, votes in category_votes.items():
@@ -289,7 +311,7 @@ def parse_smartbugs_wild(wild_dir: Path, results_dir: Path, max_samples: int = 5
                 categories_seen.add(our_type)
                 labels.append({
                     "issue_type": our_type,
-                    "line_number": None,  # No line-level labels in wild
+                    "line_number": None,
                     "description": f"{category} detected by {votes} tools",
                     "severity": "Critical" if our_type in ("reentrancy", "access_control") else "Medium",
                     "source": "smartbugs_wild",
@@ -297,10 +319,11 @@ def parse_smartbugs_wild(wild_dir: Path, results_dir: Path, max_samples: int = 5
                 })
 
         if not labels:
-            # No consensus -> likely safe
             primary = "safe"
         else:
-            primary = list(categories_seen)[0]
+            # Prefer a concrete vuln label over "other" when multiple agree
+            ranked = [c for c in categories_seen if c != "other"] or list(categories_seen)
+            primary = ranked[0]
 
         samples.append({
             "id": f"wild_{address}",
@@ -314,7 +337,7 @@ def parse_smartbugs_wild(wild_dir: Path, results_dir: Path, max_samples: int = 5
             "source": "smartbugs_wild",
         })
 
-    print(f"  Parsed {len(samples)} wild contracts (from {len(sol_files)} total)")
+    print(f"  Parsed {len(samples)} wild contracts (scanned {scanned} files, cap={max_samples})")
     return samples
 
 

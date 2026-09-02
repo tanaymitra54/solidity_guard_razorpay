@@ -103,8 +103,25 @@ class TrainConfig:
         """Load config from YAML file."""
         import yaml
         with open(path) as f:
-            data = yaml.safe_load(f)
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+            data = yaml.safe_load(f) or {}
+        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        # PyYAML may load scientific notation (e.g. 2e-5) as str — coerce numerics.
+        float_fields = {
+            "train_ratio", "val_ratio", "learning_rate", "weight_decay",
+            "warmup_ratio", "max_grad_norm",
+        }
+        int_fields = {
+            "max_length", "seed", "epochs", "batch_size",
+            "gradient_accumulation_steps", "logging_steps", "eval_steps",
+            "early_stopping_patience", "num_labels",
+        }
+        for key in float_fields:
+            if key in known and known[key] is not None:
+                known[key] = float(known[key])
+        for key in int_fields:
+            if key in known and known[key] is not None:
+                known[key] = int(known[key])
+        return cls(**known)
 
     def resolve_device(self) -> torch.device:
         if self.device == "auto":
@@ -371,7 +388,7 @@ def main() -> None:
     logger.info(f"Device: {device}")
     if device.type == "cuda":
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
     # --- Load tokenizer & model ---
     logger.info(f"Loading model: {config.model_name}")
@@ -401,6 +418,11 @@ def main() -> None:
         logger.info(f"Loading dataset from {config.manifest_path}")
         samples = load_manifest(config.manifest_path)
     logger.info(f"  Loaded {len(samples)} contracts")
+    if not samples:
+        raise SystemExit(
+            "No training samples found. Re-run: "
+            "python3 training/download_data.py --output training/data --wild-only"
+        )
 
     if config.augment:
         samples = augment_samples(samples)

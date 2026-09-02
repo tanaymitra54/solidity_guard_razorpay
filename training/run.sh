@@ -48,12 +48,22 @@ else
 fi
 
 echo "[Step 2/8] Checking Python..."
+if [[ -f "$PROJECT_DIR/.venv/bin/activate" ]]; then
+    # shellcheck disable=SC1091
+    source "$PROJECT_DIR/.venv/bin/activate"
+elif [[ ! -d "$PROJECT_DIR/.venv" ]]; then
+    echo "  Creating virtualenv at .venv ..."
+    python3 -m venv "$PROJECT_DIR/.venv"
+    # shellcheck disable=SC1091
+    source "$PROJECT_DIR/.venv/bin/activate"
+fi
 python3 --version
 echo ""
 
 echo "[Step 3/8] Installing Python dependencies..."
-pip install -q torch transformers datasets scikit-learn pyyaml accelerate 2>/dev/null || \
-pip install torch transformers datasets scikit-learn pyyaml accelerate
+python3 -m pip install -q -U pip
+python3 -m pip install -q torch transformers datasets scikit-learn pyyaml accelerate 2>/dev/null || \
+python3 -m pip install torch transformers datasets scikit-learn pyyaml accelerate
 echo "  Dependencies installed."
 echo ""
 
