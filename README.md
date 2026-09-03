@@ -9,7 +9,7 @@ license: mit
 short_description: Solidity smart contract security review environment
 ---
 
-# SolidityGuard
+# SolidityGuard-Tanay
 
 **OpenEnv RL environment + multi-agent auditor for Solidity smart contracts.**
 
