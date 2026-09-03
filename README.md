@@ -9,7 +9,7 @@ license: mit
 short_description: Solidity smart contract security review environment
 ---
 
-# SolidityGuard
+# SolidityGuard-Tanay
 
 SolidityGuard is an OpenEnv RL environment that trains AI agents to review Solidity smart contracts for security vulnerabilities, gas optimizations, and best practices. It provides a multi-agent audit pipeline, structured reward scoring, and a dataset of real-world Solidity samples.
 
